@@ -54,9 +54,8 @@ main :: (){
 		}
 		
 		command_buffer := gpu_start_command_recording(*queue);
-		gpu_clear(command_buffer, *backbuffer, .[1, 0, 0, 1]);
 		render_pass: Render_Pass_Descriptor;
-		render_pass.color_targets = .[{*backbuffer, .LOAD, .STORE, 0}];
+		render_pass.color_targets = .[{*backbuffer, .CLEAR, .STORE, .[1, 0, 0, 1]}];
 		gpu_begin_render_pass(command_buffer, render_pass);
 		gpu_bind_pipeline(*command_buffer, *pipeline);
 
