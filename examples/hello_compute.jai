@@ -23,7 +23,7 @@ main :: (){
 	backbuffer := gpu_create_texture({1280, 720, .R8G8B8A8_UNORM, .STORAGE | .COLOR_ATTACHMENT | .TRANSFER_SRC | .TRANSFER_DST });
 
 	rw_texture_heap := gpu_create_rw_texture_heap();
-	gpu_create_rw_texture_view_descriptor(backbuffer, rw_texture_heap, 0);
+	gpu_create_rw_texture_view_descriptor(rw_texture_heap, 0, backbuffer);
 
 	while !quit {
         update_window_events();

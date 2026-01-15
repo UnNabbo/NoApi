@@ -28,7 +28,7 @@ Hazard :: enum_flags u64 {
 	DRAW_ARGUMENTS :: 0x1;
 	COLOR_BUFFER   :: 0x100;
 	DEPTH_STENCIL  :: 0x200;
-	DESCRIPTORS    :: VK_ACCESS_2_DESCRIPTOR_BUFFER_READ_BIT_EXT;
+	DESCRIPTORS    :: 0x20000000000;
 }
 
 gpu_create_semaphore :: (initial_value: u64 = 0) -> Semaphore {

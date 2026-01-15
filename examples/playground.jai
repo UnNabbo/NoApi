@@ -67,8 +67,8 @@ main :: (){
 	texture_heap := gpu_create_texture_heap();
 	rw_texture_heap :=  gpu_create_rw_texture_heap();
 	
-	gpu_create_rw_texture_view_descriptor(backbuffer, rw_texture_heap, 0);
-	gpu_create_texture_view_descriptor(texture, texture_heap, 0);
+	gpu_create_rw_texture_view_descriptor(rw_texture_heap, 0, backbuffer);
+	gpu_create_texture_view_descriptor(texture_heap, 0, texture);
 	
 	upload_buffer := gpu_start_command_recording(*compute_queue);
 
@@ -109,8 +109,6 @@ main :: (){
 		
 		command_buffer := gpu_start_command_recording(*compute_queue);
 		
-		//gpu_clear(command_buffer, *dst_texture, {255, 0, 0, 255});
-		
 		gpu_bind_pipeline(*command_buffer, *pipeline);
 		gpu_bind_texture_heap(command_buffer, texture_heap, rw_texture_heap);
 		gpu_dispatch(command_buffer, null, 1280 / 16, 720 / 16, 1);
@@ -118,7 +116,7 @@ main :: (){
 		gpu_barrier(command_buffer, .COMPUTE_SHADER, .ALL_GRAPHICS, .DESCRIPTORS);
  
 		render_pass: Render_Pass_Descriptor;
-		render_pass.color_targets = .[{*backbuffer, .LOAD, .STORE, 0}];
+		render_pass.color_targets = .[{*backbuffer, .LOAD, .STORE, .[0]}];
 		gpu_begin_render_pass(command_buffer, render_pass);
 		gpu_bind_pipeline(*command_buffer, *gpipeline);
 		gpu_bind_texture_heap(command_buffer, texture_heap, rw_texture_heap);
@@ -126,13 +124,6 @@ main :: (){
 		gpu_draw_indexed(command_buffer, vertex.gpu, null, indices.cpu, 3);
 		gpu_end_render_pass(command_buffer);
 
-#if false{
-		barrier := gpu_create_barrier();
-		defer gpu_destroy_barrier(barrier);
-		gpu_signal_after(command_buffer, .ALL, *barrier);
-		gpu_wait_before(command_buffer, .HOST, *barrier);
-}
-		
 	
 		gpu_present(command_buffer, *compute_queue, *backbuffer);
 		gpu_end_command_recording(command_buffer);
