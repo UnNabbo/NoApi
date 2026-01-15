@@ -279,7 +279,7 @@ gpu_malloc :: (size: s64, alignment: s64 = 16, kind: Memory_Kind = .DEFAULT) -> 
 	alloc_info.usage = ifx kind != .GPU then .AUTO else .GPU_ONLY;
 	alloc_info.flags = ifx kind != .GPU then .MAPPED_BIT | ifx kind == .DEFAULT || kind == .DESCRIPTORS then .HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 	allocation := get(*device.allocator.metadata, GPU_Allocation);
-	allocation.size = xx size;
+	allocation.size = xx align_to(size, alignment);
 
 	buffer_info: VkBufferCreateInfo;
 	buffer_info.size = cast(u64, size);
@@ -287,6 +287,7 @@ gpu_malloc :: (size: s64, alignment: s64 = 16, kind: Memory_Kind = .DEFAULT) -> 
 	vk_assert(vmaCreateBufferWithAlignment(device.allocator,xx *buffer_info, *alloc_info,xx alignment,xx *allocation.buffer, *allocation.handle, *allocation.info));
 
 	ptr : * void = ifx kind != .GPU then allocation.info.pMappedData else xx allocation.handle;
+	if kind != .GPU then memset(ptr, 0, allocation.size);
 	allocation.base = xx ptr;
 	add(ifx kind != .GPU then *device.allocator.cpu else *device.allocator.gpu, xx ptr, cast(u64, ptr) + xx size, allocation);
 	//log("Allocated bytes % with tag % at address %", size, tag, ptr);
@@ -327,6 +328,7 @@ gpu_free :: (ptr: *void, loc := #caller_location){
 
 gpu_host_to_device_address :: (ptr: *void) -> *void{
 	allocation := get_cpu_metadata(ptr);
+	offset := cast(u64, ptr) - allocation.base;
 	device_adress_info: VkBufferDeviceAddressInfo;
 	device_adress_info.buffer = allocation.buffer;
 	address := vkGetBufferDeviceAddress(device, *device_adress_info);
@@ -334,7 +336,7 @@ gpu_host_to_device_address :: (ptr: *void) -> *void{
 		add(*device.allocator.gpu, xx address, cast(u64, address) + xx allocation.size, allocation);
 		allocation.mapped = true;
 	}
-	return xx address;
+	return xx (address + offset);
 }
 
 gpu_create_texture :: (using info: Texture_Info, kind: Memory_Kind = .GPU) ->  Texture{
