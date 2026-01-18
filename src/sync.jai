@@ -54,10 +54,6 @@ gpu_wait_semaphore :: (semaphore: Semaphore, value: u64 = 0) {
 	vkWaitSemaphores(device, *wait_info, U64_MAX);
 }
 
-gpu_destroy_semaphore :: (semaphore: Semaphore) {
-	
-}
-
 gpu_create_binary_semaphore :: () -> Semaphore{
 	semaphore: Semaphore;
 	
@@ -70,10 +66,18 @@ gpu_create_binary_semaphore :: () -> Semaphore{
 
 gpu_barrier :: (buffer: Command_Buffer, before: Stage, after: Stage, hazards: Hazard = .NONE) {
 	memory_barrier: VkMemoryBarrier2;
-	memory_barrier.srcAccessMask = xx (ifx before == .TRANSFER then VK_ACCESS_2_TRANSFER_READ_BIT else VK_ACCESS_2_SHADER_WRITE_BIT);
+	
+	memory_barrier.srcAccessMask;
+	if is_shader_stage(before) then memory_barrier.srcAccessMask |= VK_ACCESS_2_SHADER_WRITE_BIT;
+	if before == .TRANSFER then memory_barrier.srcAccessMask |= VK_ACCESS_2_TRANSFER_READ_BIT;
+	if before == .COLOR_ATTACHMENT_OUTPUT then memory_barrier.srcAccessMask |= VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
 	memory_barrier.srcStageMask  = xx before;
-    memory_barrier.dstAccessMask = xx VK_ACCESS_2_SHADER_READ_BIT | (xx hazards);
+	
+    memory_barrier.dstAccessMask = xx hazards;
+	if is_shader_stage(after) then memory_barrier.dstAccessMask |= VK_ACCESS_2_SHADER_READ_BIT;
     memory_barrier.dstStageMask  = xx after;
+
+	
 
 	info: VkDependencyInfo;
 	info.memoryBarrierCount = 1;
@@ -121,7 +125,22 @@ gpu_wait_before :: (buffer: Command_Buffer, stage: Stage, barrier: *Barrier) {
 	//vk_assert(vkResetEvent(device, barrier.*));
 }
 
-
-destroy_semaphore :: (semaphore: Semaphore){
+gpu_destroy_semaphore :: (semaphore: Semaphore){
 	vkDestroySemaphore(device, semaphore, null);
+}
+
+#scope_file;
+
+is_shader_stage :: (stage: Stage) -> bool{
+	if stage == {
+		case .VERTEX_SHADER; #through;                 
+		case .TESSELLATION_CONTROL_SHADER; #through;   
+		case .TESSELLATION_EVALUATION_SHADER; #through;
+		case .GEOMETRY_SHADER; #through;               
+		case .FRAGMENT_SHADER; #through;               
+		case .COMPUTE_SHADER; 
+			return true;
+	}
+	
+	return false;
 }

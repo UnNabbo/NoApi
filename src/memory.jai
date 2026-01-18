@@ -1,3 +1,7 @@
+Memory_Stats :: struct{
+	used: u64;
+}
+
 Memory_Kind :: enum {
 	DEFAULT;
 	GPU;
@@ -274,31 +278,54 @@ Texture_Info :: struct{
 	usage: Texture.Usage = .SAMPLED | .TRANSFER_DST | .TRANSFER_SRC;
 }
 
-gpu_malloc :: (size: s64, alignment: s64 = 16, kind: Memory_Kind = .DEFAULT) -> *void {
-	alloc_info: VmaAllocationCreateInfo ;
-	alloc_info.usage = ifx kind != .GPU then .AUTO else .GPU_ONLY;
-	alloc_info.flags = ifx kind != .GPU then .MAPPED_BIT | ifx kind == .DEFAULT || kind == .DESCRIPTORS then .HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-	allocation := get(*device.allocator.metadata, GPU_Allocation);
-	allocation.size = xx align_to(size, alignment);
+gpu_malloc :: (size: s64, alignment: s64 = 16, kind: Memory_Kind = .DEFAULT, loc := #caller_location) -> *void {
+	if size == 0 {
+		#if RENDERING_DEBUG then log("[Memory][Warn] Trying to allocate memory with size 0");
+		return null;
+	}
+	
+	memory_stats.used += xx size;
 
-	buffer_info: VkBufferCreateInfo;
-	buffer_info.size = cast(u64, size);
-	buffer_info.usage = ifx kind != .GPU then .SHADER_DEVICE_ADDRESS_BIT | .TRANSFER_SRC_BIT | .TRANSFER_DST_BIT | .INDEX_BUFFER_BIT | ifx kind == .DESCRIPTORS then .RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT;
+	alloc_flags: VmaAllocationCreateFlags;
+	if kind != .GPU then alloc_flags |= .MAPPED_BIT;
+	if kind == .DEFAULT || kind == .DESCRIPTORS then alloc_flags |= .HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+	
+	
+	alloc_info := VmaAllocationCreateInfo.{
+		usage = ifx kind != .GPU then .AUTO else .GPU_ONLY,
+		flags = alloc_flags
+	};
+
+	buffer_usage: VkBufferUsageFlags;
+	if kind != .GPU then buffer_usage |= .SHADER_DEVICE_ADDRESS_BIT | .TRANSFER_SRC_BIT | .TRANSFER_DST_BIT | .INDEX_BUFFER_BIT;
+	if kind == .DESCRIPTORS then buffer_usage |= .RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT;
+	
+	buffer_info := VkBufferCreateInfo.{
+		size = cast(u64, size),
+		usage = buffer_usage
+	};
+	
+	allocation := get(*device.allocator.metadata, GPU_Allocation);
+	allocation.size = cast(u64, align_to(size, alignment));
+	
 	vk_assert(vmaCreateBufferWithAlignment(device.allocator,xx *buffer_info, *alloc_info,xx alignment,xx *allocation.buffer, *allocation.handle, *allocation.info));
 
-	ptr : * void = ifx kind != .GPU then allocation.info.pMappedData else xx allocation.handle;
-	if kind != .GPU then memset(ptr, 0, allocation.size);
-	allocation.base = xx ptr;
-	add(ifx kind != .GPU then *device.allocator.cpu else *device.allocator.gpu, xx ptr, cast(u64, ptr) + xx size, allocation);
-	//log("Allocated bytes % with tag % at address %", size, tag, ptr);
-#if false{
-	gpu_add := cast(u64, gpu_host_to_device_address(ptr));
-	log("RANGE CPU: (% - %), GPU (% - %)", cast(u64, ptr), cast(u64, ptr) + xx size, gpu_add, gpu_add + xx size);
-}
+	ptr : * void;
+	if kind == .GPU {
+		ptr = cast(*void, allocation.handle);
+		allocation.base = cast(u64, ptr);
+		add(*device.allocator.gpu, allocation.base, allocation.base + allocation.size, allocation);
+	}else{
+		ptr = allocation.info.pMappedData;
+		allocation.base = cast(u64, ptr);
+		add(*device.allocator.cpu, allocation.base, allocation.base + allocation.size, allocation);
+		memset(ptr, 0, xx allocation.size);
+	}
+	
 	return ptr;
 }
 
-gpu_malloc :: (count: s64, $type: Type, kind: Memory_Kind = .DEFAULT) -> *type{
+gpu_malloc :: (count: s64, $type: Type, kind: Memory_Kind = .DEFAULT, loc := #caller_location) -> *type{
 	#if type == Texture_Descriptor{
 		size : s64 = count * xx physical_device.proprieties.combinedImageSamplerDescriptorSize;
 		return gpu_malloc(size, physical_device.alignment, kind);
@@ -306,24 +333,25 @@ gpu_malloc :: (count: s64, $type: Type, kind: Memory_Kind = .DEFAULT) -> *type{
 		size : s64 = count * xx physical_device.proprieties.storageImageDescriptorSize;
 		return gpu_malloc(size, physical_device.alignment, kind);
 	}else{
-		return gpu_malloc(count * size_of(type), max(align_of(type), 16), kind);
+		return gpu_malloc(count * size_of(type), max(align_of(type), 16), kind, loc);
 	}
 }
 
-gpu_malloc :: (count: s64, $type: Type, alignment: s64, kind: Memory_Kind = .DEFAULT) -> *type{
-	return gpu_malloc(count * size_of(type), alignment, kind);
+gpu_malloc :: (count: s64, $type: Type, alignment: s64, kind: Memory_Kind = .DEFAULT, loc := #caller_location) -> *type{
+	return gpu_malloc(count * size_of(type), alignment, kind, loc);
 }
 
-gpu_malloc :: (array: []$type, kind: Memory_Kind = .DEFAULT) -> *type{
-	data := gpu_malloc(array.count, type, kind);
+gpu_malloc :: (array: []$type, kind: Memory_Kind = .DEFAULT, loc := #caller_location) -> *type{
+	data := gpu_malloc(array.count, type, kind, loc);
 	memcpy(data, array.data, array.count * size_of(type));
 	return data;
 }
 
 gpu_free :: (ptr: *void, loc := #caller_location){
-	allocation := get_cpu_metadata(ptr);
-	delete(*device.allocator.cpu, xx ptr, cast(u64, ptr) + xx allocation.size);
+	allocation, node := get_cpu_metadata(ptr);
+	memory_stats.used -= allocation.size;
 	vmaDestroyBuffer(device.allocator,xx allocation.buffer, allocation);
+	delete_node(*device.allocator.cpu, node);
 }
 
 gpu_host_to_device_address :: (ptr: *void) -> *void{
@@ -333,7 +361,7 @@ gpu_host_to_device_address :: (ptr: *void) -> *void{
 	device_adress_info.buffer = allocation.buffer;
 	address := vkGetBufferDeviceAddress(device, *device_adress_info);
 	if !allocation.mapped{
-		add(*device.allocator.gpu, xx address, cast(u64, address) + xx allocation.size, allocation);
+		add(*device.allocator.gpu, xx address, cast(u64, address) + allocation.size, allocation);
 		allocation.mapped = true;
 	}
 	return xx (address + offset);
@@ -402,14 +430,13 @@ gpu_create_rw_texture_heap :: () -> *RWTexture_Descriptor{
 	return gpu_malloc(rwtexture_heap_size, RWTexture_Descriptor, .DESCRIPTORS);
 }
 
-gpu_create_texture_view_descriptor :: (ptr: *Texture_Descriptor, texture: Texture){
+gpu_create_texture_view_descriptor :: (ptr: *Texture_Descriptor, index: u64, texture: Texture){
 	metadata := get_cpu_metadata(ptr);
-	offset := (cast(u64, ptr) - metadata.base)  / size_of(Texture_Descriptor);
 
 	get_info: VkDescriptorGetInfoEXT;
 	get_info.type = .COMBINED_IMAGE_SAMPLER;
 
-	sampler := *cast(*VkSampler, metadata.additional_data)[offset];
+	sampler := *cast(*VkSampler, metadata.additional_data)[index];
 	if sampler.* != VK_NULL_HANDLE {
 		vkDestroySampler(device, sampler.*, null);
 		sampler.* = VK_NULL_HANDLE;
@@ -429,15 +456,14 @@ gpu_create_texture_view_descriptor :: (ptr: *Texture_Descriptor, texture: Textur
 	get_info.data = .{pCombinedImageSampler =  *image_info};
 	//log("ALL: %", physical_device.proprieties.descriptorBufferOffsetAlignment);
 	
-	vkGetDescriptorEXT(device, *get_info, physical_device.proprieties.combinedImageSamplerDescriptorSize, xx (cast(*u8, ptr) + offset * physical_device.proprieties.combinedImageSamplerDescriptorSize));
+	vkGetDescriptorEXT(device, *get_info, physical_device.proprieties.combinedImageSamplerDescriptorSize, xx (cast(*u8, ptr) + index * physical_device.proprieties.combinedImageSamplerDescriptorSize));
 
 	//vkDestroySampler(device, sampler, null);
 }
 
-gpu_create_rw_texture_view_descriptor :: (ptr: *RWTexture_Descriptor, texture: Texture){
+gpu_create_rw_texture_view_descriptor :: (ptr: *RWTexture_Descriptor, index: u64, texture: Texture){
 	metadata := get_cpu_metadata(ptr);
 	
-	offset := (cast(u64, ptr) - metadata.base)  / size_of(RWTexture_Descriptor);
 	get_info: VkDescriptorGetInfoEXT;
 	get_info.type = .STORAGE_IMAGE;
 	
@@ -446,16 +472,9 @@ gpu_create_rw_texture_view_descriptor :: (ptr: *RWTexture_Descriptor, texture: T
 	image_info.imageLayout = xx texture.layout;
 	get_info.data = .{pStorageImage =  *image_info};
 	
-	vkGetDescriptorEXT(device, *get_info, physical_device.proprieties.storageImageDescriptorSize,  xx (cast(*u8, ptr) + offset * physical_device.proprieties.storageImageDescriptorSize));
+	vkGetDescriptorEXT(device, *get_info, physical_device.proprieties.storageImageDescriptorSize,  xx (cast(*u8, ptr) + index * physical_device.proprieties.storageImageDescriptorSize));
 }
 
-gpu_create_texture_view_descriptor :: (ptr: *Texture_Descriptor, index: u64, texture: Texture) {
-	gpu_create_texture_view_descriptor(ptr + index, texture);
-}
-
-gpu_create_rw_texture_view_descriptor :: (ptr: *RWTexture_Descriptor, index: u64, texture: Texture) {
-	gpu_create_rw_texture_view_descriptor(ptr + index, texture);
-}
 
 #scope_module;
 
@@ -465,7 +484,7 @@ GPU_Allocation :: struct {
 	mapped: bool;
 
 	base: u64;
-	size: s64;
+	size: u64;
 
 	buffer: VkBuffer;
 	
@@ -479,15 +498,15 @@ GPU_Allocator :: struct{
 	metadata: Flat_Pool;
 }
 
-get_cpu_metadata :: (ptr: *void) -> *GPU_Allocation{
-	found, metadata := find(*device.allocator.cpu, xx ptr);
+get_cpu_metadata :: (ptr: *void) -> *GPU_Allocation, *void{
+	found, metadata, node := find(*device.allocator.cpu, xx ptr);
 	assert(found, "Could not locate pointer to mapped memory");
-	return metadata;
+	return metadata, node;
 }
 
 get_gpu_metadata :: (ptr: *void) -> *GPU_Allocation{
 	found, metadata := find(*device.allocator.gpu, xx ptr);
-	assert(found, "Could not locate pointer to mapped memory");
+	assert(found, "Could not locate pointer to gpu memory");
 	return metadata;
 }
 

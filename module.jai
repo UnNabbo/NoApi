@@ -25,6 +25,12 @@ gpu_init :: (texture_heap_size: s64, rwtexture_heap_size: s64, queues: ..Queue_R
 	gpu_context.texture_heap_size = texture_heap_size;
 	gpu_context.rwtexture_heap_size = rwtexture_heap_size;
 
+	
+#if false{
+	layout := create_texture_heap_descriptor_set_layout();
+	global_pipeline_layout.pSetLayouts = texture_layout.data;
+	global_pipeline_layout.setLayoutCount = xx texture_layout.count;
+}
 }
 
 gpu_create_swapchain :: (window: Window_Type, width:s32, height: s32, present_mode: Swap_Chain_Present_Mode) {
@@ -63,6 +69,11 @@ Rendering_Context :: struct{
 	
 	window_handle: Window_Type;
 	texture_heap_size, rwtexture_heap_size: s64;
+
+	
+	global_pipeline_layout: VkPipelineLayout;
+
+	memory_stats: Memory_Stats;
 }
 
 

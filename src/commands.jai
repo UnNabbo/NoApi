@@ -60,20 +60,22 @@ gpu_create_queue :: (kind: Queue_Family.Kind) -> Queue {
 	}
 	
 	for * device.created_queues {
-		if it.kind == kind && it.used < it.count {
-			vkGetDeviceQueue(device, xx it.index,xx it.used, *queue.handle);
-			queue.family_index = it.index;
-			queue.kind = it.kind;
-			it.used += 1;
+		if it.kind == kind {
+			if it.used < it.count {
+				vkGetDeviceQueue(device, xx it.index,xx it.used, *queue.handle);
+				queue.family_index = it.index;
+				queue.kind = it.kind;
+				it.used += 1;
 			
-			command_pool_info: VkCommandPoolCreateInfo;
-			command_pool_info.flags = .TRANSIENT_BIT;
-			command_pool_info.queueFamilyIndex = it.index;
-			vk_assert(vkCreateCommandPool(device, *command_pool_info, null, *queue.pool));
+				command_pool_info: VkCommandPoolCreateInfo;
+				command_pool_info.flags = .TRANSIENT_BIT;
+				command_pool_info.queueFamilyIndex = it.index;
+				vk_assert(vkCreateCommandPool(device, *command_pool_info, null, *queue.pool));
 			
-			return queue;
+				return queue;
+			}
+			assert(it.used != it.count, "Trying to allocate queue which was not accounted for in initialization(%/%)", it.used + 1, it.count);
 		}
-		assert(it.used != it.count, "Trying to allocate queue which was not accounted for in initialization(%/%)", it.used + 1, it.count);
 	}
 	assert(false, "Trying to allocate queue which was not accounted for in initialization(1/0)");
 	return {};
@@ -146,14 +148,11 @@ gpu_end_render_pass :: (buffer: Command_Buffer) {
 }
 
 gpu_draw_indexed :: (buffer: Command_Buffer, vertex_data: *void, pixel_data: *void, indices: *$T, index_count: s64, instance_count: s64 = 1) {
-	if vertex_data{
-		vertex_address := cast(VkDeviceAddress, vertex_data);
-		vkCmdPushConstants(buffer, buffer.current_pipeline.layout, .VERTEX_BIT, 0, size_of(VkDeviceAddress), *vertex_address);
-	}
-	if pixel_data{
-		pixel_address := cast(VkDeviceAddress, pixel_data);
-		vkCmdPushConstants(buffer, buffer.current_pipeline.layout, .FRAGMENT_BIT, size_of(VkDeviceAddress), size_of(VkDeviceAddress), *pixel_address);
-	}
+	vertex_address := cast(VkDeviceAddress, vertex_data);
+	vkCmdPushConstants(buffer, buffer.current_pipeline.layout, .VERTEX_BIT, 0, size_of(VkDeviceAddress), *vertex_address);
+	
+	pixel_address := cast(VkDeviceAddress, pixel_data);
+	vkCmdPushConstants(buffer, buffer.current_pipeline.layout, .FRAGMENT_BIT, size_of(VkDeviceAddress), size_of(VkDeviceAddress), *pixel_address);
 
 	allocation := get_cpu_metadata(indices);
 	offset := cast(u64, indices) - allocation.base;
@@ -208,8 +207,10 @@ gpu_clear :: (buffer: Command_Buffer, image: *Texture,  color: [4] f32){
 }
 
 gpu_copy_to_texture :: (buffer: Command_Buffer, texture: *Texture, data: *void) {
+	allocation := get_cpu_metadata(data);
+	offset := cast(u64, data) - allocation.base;
 	copy_region: VkBufferImageCopy;
-	copy_region.bufferOffset = 0;
+	copy_region.bufferOffset = offset;
 	copy_region.bufferRowLength = 0;
 	copy_region.bufferImageHeight = 0;
 	copy_region.imageSubresource.aspectMask = .COLOR_BIT;
@@ -217,8 +218,6 @@ gpu_copy_to_texture :: (buffer: Command_Buffer, texture: *Texture, data: *void) 
 	copy_region.imageSubresource.baseArrayLayer = 0;
 	copy_region.imageSubresource.layerCount = 1;
 	copy_region.imageExtent = texture.extent;
-
-	allocation := get_cpu_metadata(data);
 	transition_image_layout(buffer, texture, .TRANSFER_DST_OPTIMAL);
 	vkCmdCopyBufferToImage(buffer, allocation.buffer, texture, xx texture.layout, 1,  *copy_region);
 }
@@ -299,7 +298,6 @@ gpu_bind_texture_heap :: (buffer: Command_Buffer, sampling_ptr: *void, rw_ptr: *
 	if rw_ptr then descriptor_buffer_binding_info[1].address =  xx gpu_host_to_device_address(rw_ptr);
 	vkCmdBindDescriptorBuffersEXT(buffer, xx ifx sampling_ptr && rw_ptr then 2 else 1, *descriptor_buffer_binding_info[ifx sampling_ptr then 0 else 1]);
 
-	
 	index: [2]u32 = .[0, 1]; offset: [2]u64 = .[0, 0]; 
 	vkCmdSetDescriptorBufferOffsetsEXT(buffer, xx buffer.current_pipeline.usage, buffer.current_pipeline.layout,xx ifx sampling_ptr then 0 else 1, xx ifx sampling_ptr && rw_ptr then 2 else 1, index.data, offset.data);
 }

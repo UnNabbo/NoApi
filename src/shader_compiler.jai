@@ -1,8 +1,8 @@
-gpu_compile_shader :: (path: string, debug := RENDERING_DEBUG, is_file := true) -> bool, string {
+gpu_compile_shader :: (path: string, debug := RENDERING_DEBUG, is_file := true, search_path := "") -> bool, string {
 	if !slang_global_session then Slang.slang_createGlobalSession(Slang.SLANG_API_VERSION, *slang_global_session);
 	
 	print_diagnostic_blob :: (blob: *Slang.IBlob) {
-		log_error("[Slang][Error]: %", string.{
+		log_error("%", string.{
 			data = Slang.ISlangBlob_getBufferPointer(blob),
 			count = xx Slang.ISlangBlob_getBufferSize(blob),
 		});
@@ -59,8 +59,9 @@ gpu_compile_shader :: (path: string, debug := RENDERING_DEBUG, is_file := true) 
     session_desc.compilerOptionEntries = options.data;
     session_desc.compilerOptionEntryCount = xx options.count;
 
+	actual_path := ifx search_path == "" then path else tprint("%src/%", search_path, path);
 	if is_file{
-		source_dir := path_strip_filename(path);
+		source_dir := path_strip_filename(actual_path);
 		search_paths := temp_c_string(source_dir);
 		
 		session_desc.searchPaths = *search_paths;
@@ -73,7 +74,7 @@ gpu_compile_shader :: (path: string, debug := RENDERING_DEBUG, is_file := true) 
     defer Slang.ISlangUnknown_release(session);
 
     diagnostic_blob: *Slang.IBlob;
-    slang_module := ifx is_file then Slang.ISession_loadModule(session, temp_c_string(path), *diagnostic_blob) else Slang.ISession_loadModuleFromSourceString(session, "_", "_.slang", temp_c_string(path), *diagnostic_blob);
+    slang_module := ifx is_file then Slang.ISession_loadModule(session, temp_c_string(actual_path), *diagnostic_blob) else Slang.ISession_loadModuleFromSourceString(session, "_", "_.slang", temp_c_string(actual_path), *diagnostic_blob);
     if diagnostic_blob then print_diagnostic_blob(diagnostic_blob);
     if !slang_module then return false, .{};
 
