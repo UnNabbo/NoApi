@@ -288,7 +288,7 @@ create_device :: (physical_device: *Physical_Device, queues: ..Queue_Request_Ent
 	features13.pNext = *descriptor_buffer;
 	features13.dynamicRendering = 1;
 	features13.synchronization2 = 1;
-
+		
 	features12: VkPhysicalDeviceVulkan12Features;
 	features12.pNext = *features13;
 	features12.bufferDeviceAddress = 1;
@@ -296,11 +296,13 @@ create_device :: (physical_device: *Physical_Device, queues: ..Queue_Request_Ent
 	features12.shaderSampledImageArrayNonUniformIndexing  = 1;
 	features12.descriptorBindingPartiallyBound  = 1;
 	features12.runtimeDescriptorArray   = 1;
+	features12.storagePushConstant8    = 1;
 
 	features11: VkPhysicalDeviceVulkan11Features;
 	features11.pNext = *features12;
 	features11.variablePointers  = 1;
 	features11.variablePointersStorageBuffer = 1;
+	features11.storagePushConstant16  = 1;
 	
 	device_features.pNext = *features11;
 	
