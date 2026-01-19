@@ -442,8 +442,8 @@ gpu_create_texture_view_descriptor :: (ptr: *Texture_Descriptor, index: u64, tex
 		sampler.* = VK_NULL_HANDLE;
 	}
 	sampler_info: VkSamplerCreateInfo ;
-	sampler_info.magFilter = .NEAREST;
-	sampler_info.minFilter = .NEAREST;
+	sampler_info.magFilter = .LINEAR;
+	sampler_info.minFilter = .LINEAR;
 	//sampler_info.addressModeU = .MIRRORED_REPEAT;
 	//sampler_info.addressModeV = .MIRRORED_REPEAT;
 	//sampler_info.addressModeW = .MIRRORED_REPEAT;
