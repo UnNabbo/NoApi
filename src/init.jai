@@ -229,14 +229,9 @@ create_physical_device :: (instance: *Instance) -> Physical_Device{
 			}
 		}
 
-		if (device_properties.deviceType == .DISCRETE_GPU) {
-			device.available_queues = families;
-			device.handle = physical_device;
-			//log("%", families);
-			break;
-		}else{
-			array_free(families);
-		}
+		device.available_queues = families;
+		device.handle = physical_device;
+		break;
 	}
 
 	props2: VkPhysicalDeviceProperties2 = .{pNext = *device.proprieties};
