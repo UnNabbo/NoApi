@@ -96,8 +96,8 @@ Blending_State :: struct {
     dst_color_Factor: Factor = .ONE_MINUS_SRC_ALPHA;
 	
     alpha_op: Op = .ADD;
-    src_alpha_factor: Factor = .ONE;
-    dst_alpha_factor: Factor = .ZERO;
+    src_alpha_factor: Factor = .SRC_ALPHA;
+    dst_alpha_factor: Factor = .ONE_MINUS_SRC_ALPHA;
 	
     write_mask: u8 = 0xf;
 };

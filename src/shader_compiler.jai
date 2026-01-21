@@ -55,7 +55,7 @@ gpu_compile_shader :: (path: string, debug := RENDERING_DEBUG, is_file := true, 
     session_desc.compilerOptionEntries = options.data;
     session_desc.compilerOptionEntryCount = xx options.count;
 
-	actual_path := ifx search_path == "" then path else tprint("%src/%", search_path, path);
+	actual_path := ifx search_path == "" then path else tprint("%%", search_path, path);
 	if is_file{
 		source_dir := path_strip_filename(actual_path);
 		search_paths := temp_c_string(source_dir);
