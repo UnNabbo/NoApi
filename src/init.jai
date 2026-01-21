@@ -156,7 +156,7 @@ create_physical_device :: (instance: *Instance) -> Physical_Device{
 	device: Physical_Device;
 	device.instance = instance;
 	device_extensions: []*u8 = .[
-		VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_VARIABLE_POINTERS_EXTENSION_NAME, VK_KHR_8BIT_STORAGE_EXTENSION_NAME, VK_KHR_16BIT_STORAGE_EXTENSION_NAME
+		VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_VARIABLE_POINTERS_EXTENSION_NAME
 	];
 
 	device_count: u32;
@@ -192,25 +192,13 @@ create_physical_device :: (instance: *Instance) -> Physical_Device{
 		
 			if !req_ext then break;
 		}
-		
 		assert(!req_ext, "Not all required extensions are supported");
-		
-		
 		
 		queue_family_count: u32;
 		vkGetPhysicalDeviceQueueFamilyProperties(physical_device, *queue_family_count, null);
 		queue_families := array_new(queue_family_count, VkQueueFamilyProperties);
 		defer array_free(queue_families);
 		vkGetPhysicalDeviceQueueFamilyProperties(physical_device, *queue_family_count, queue_families.data);
-		// GRAPHICS_BIT         :: 0x1;
-		// COMPUTE_BIT          :: 0x2;
-		// TRANSFER_BIT         :: 0x4;
-		// SPARSE_BINDING_BIT   :: 0x8;
-		// PROTECTED_BIT        :: 0x10;
-		// VIDEO_DECODE_BIT_KHR :: 0x20;
-		// VIDEO_ENCODE_BIT_KHR :: 0x40;
-		// OPTICAL_FLOW_BIT_NV  :: 0x100;
-		// FLAG_BITS_MAX_ENUM   :: 0x7fffffff;
 		families: [..] Queue_Family;
 		for queue_families{
 			if it.queueFlags & (.VIDEO_DECODE_BIT_KHR | .VIDEO_ENCODE_BIT_KHR | .OPTICAL_FLOW_BIT_NV) then continue;
@@ -228,17 +216,21 @@ create_physical_device :: (instance: *Instance) -> Physical_Device{
 				}
 			}
 		}
-
-		device.available_queues = families;
-		device.handle = physical_device;
-		break;
+		
+		if (device_properties.deviceType == .DISCRETE_GPU) {
+			device.available_queues = families;
+			device.handle = physical_device;
+			//log("%", families);
+			break;
+		}else{
+			array_free(families);
+		}
 	}
 
-	props2: VkPhysicalDeviceProperties2 = .{pNext = *device.proprieties};
-
+	props2 := VkPhysicalDeviceProperties2.{pNext = *device.proprieties};
 	vkGetPhysicalDeviceProperties2(device, *props2);
-	device.alignment = xx max(device.proprieties.descriptorBufferOffsetAlignment,/*xx ifx props2.properties.vendorID == 0x1002 then 256 else*/ 0);
-	//log("Current buffer alignment %", device.alignment);
+	device.alignment = xx device.proprieties.descriptorBufferOffsetAlignment;
+	
 	return device;
 }
 
@@ -280,8 +272,6 @@ create_device :: (physical_device: *Physical_Device, queues: ..Queue_Request_Ent
 
 	device_features: VkPhysicalDeviceFeatures2;
 
-
-
 	descriptor_buffer : VkPhysicalDeviceDescriptorBufferFeaturesEXT = {descriptorBuffer = 1};
 
 	features13: VkPhysicalDeviceVulkan13Features;
@@ -317,8 +307,6 @@ create_device :: (physical_device: *Physical_Device, queues: ..Queue_Request_Ent
 	device_create_info.ppEnabledExtensionNames = device_extensions.data;
 	device_create_info.enabledExtensionCount = xx device_extensions.count;
 
-
-		
 	vk_assert(vkCreateDevice(physical_device.handle, *device_create_info, null, *device.handle));
 	return device;
 }

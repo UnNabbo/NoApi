@@ -133,7 +133,7 @@ plugin_names :: string.[];
 	w1 := create_workspace("playground", run = run);
 	w2 := create_workspace("hello_triangle", run = run);
 	w3 := create_workspace("hello_compute", run = run);
-	w4 := create_workspace("sponza", "examples/sponza", run = run);
+	w4 := create_workspace("sponza", "examples/sponza", run = run | true);
   
 	if compile_workspaces(w1, w2, w3, w4) && run_all{
 		for to_run  {

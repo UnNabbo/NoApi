@@ -440,15 +440,44 @@ transition_image_layout :: (command_buffer: Command_Buffer, image: *Texture, tar
 	if image.layout == target_layout then return;
 	
 	image_barrier: VkImageMemoryBarrier2;
-    image_barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-    image_barrier.srcAccessMask = ifx image.layout != .PRESENT_SRC then VK_ACCESS_2_TRANSFER_WRITE_BIT else VK_ACCESS_2_MEMORY_WRITE_BIT;
-    image_barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-    image_barrier.dstAccessMask =  ifx image.layout != .PRESENT_SRC then VK_ACCESS_2_TRANSFER_WRITE_BIT else VK_ACCESS_2_MEMORY_WRITE_BIT;
     image_barrier.oldLayout = xx image.layout;
     image_barrier.newLayout = xx target_layout;
-	
-    aspect_mask:  = ifx cast(u64, target_layout) == cast(u64, VkImageLayout.DEPTH_ATTACHMENT_OPTIMAL) then VkImageAspectFlagBits.DEPTH_BIT else VkImageAspectFlagBits.COLOR_BIT;
 
+	if image.layout == {
+		case .PRESENT_SRC;
+			image_barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+			image_barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+			
+			//image_barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+		case .TRANSFER_SRC_OPTIMAL;
+			image_barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+			image_barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+
+			image_barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;;
+			image_barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+		case;
+			image_barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+			image_barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+			
+			image_barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;;
+			image_barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+	}
+	
+	aspect_mask := VkImageAspectFlagBits.COLOR_BIT;
+	if target_layout == {
+		case .PRESENT_SRC;
+			image_barrier.srcAccessMask = xx 0;
+			image_barrier.dstAccessMask = xx 0;
+		case .DEPTH_ATTACHMENT_OPTIMAL;
+			image_barrier.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+			image_barrier.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			aspect_mask = VkImageAspectFlagBits.DEPTH_BIT;
+		case .TRANSFER_SRC_OPTIMAL;
+			image_barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+			image_barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+	}
+
+	
 	sub_image := create_subresource_range(xx aspect_mask);
 	
     image_barrier.subresourceRange = sub_image;

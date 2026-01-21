@@ -1,7 +1,7 @@
 //
 // This file was auto-generated using the following command:
 //
-// jai ./generate.jai
+// jai D:/dev/no_api/modules/slang/generate.jai
 //
 
 // Slang Result helpers and macro-defined constants
@@ -95,6 +95,8 @@ SLANG_PSP2 :: 0;
 
 SLANG_WIIU :: 0;
 
+SLANG_WASM :: 0;
+
 SLANG_GCC_FAMILY :: SLANG_CLANG || SLANG_SNC || SLANG_GHS || SLANG_GCC;
 SLANG_WINDOWS_FAMILY :: SLANG_WINRT || SLANG_WIN32 || SLANG_WIN64;
 SLANG_MICROSOFT_FAMILY :: SLANG_XBOXONE || SLANG_X360 || SLANG_WINDOWS_FAMILY;
@@ -127,6 +129,8 @@ SLANG_PROCESSOR_X86 :: 0;
 SLANG_PROCESSOR_POWER_PC :: 0;
 
 SLANG_PROCESSOR_POWER_PC_64 :: 0;
+
+SLANG_PROCESSOR_WASM :: 0;
 
 SLANG_PROCESSOR_FAMILY_X86 :: SLANG_PROCESSOR_X86_64 | SLANG_PROCESSOR_X86;
 SLANG_PROCESSOR_FAMILY_ARM :: SLANG_PROCESSOR_ARM | SLANG_PROCESSOR_ARM_64;
@@ -839,7 +843,11 @@ CompilerOptionName :: enum s32 {
     LLVMCPU                           :: 137;
     LLVMFeatures                      :: 138;
 
-    CountOf                           :: 139;
+    EnableRichDiagnostics             :: 139;
+
+    ReportDynamicDispatchSites        :: 140;
+
+    CountOf                           :: 141;
 }
 
 CompilerOptionValueKind :: enum s32 {
@@ -3456,6 +3464,7 @@ spReflectionVariable_FindUserAttributeByName :: (var: *SlangReflectionVariable, 
 spReflectionVariable_HasDefaultValue :: (inVar: *SlangReflectionVariable) -> bool #foreign slang_compiler;
 
 spReflectionVariable_GetDefaultValueInt :: (inVar: *SlangReflectionVariable, rs: *s64) -> SlangResult #foreign slang_compiler;
+
 spReflectionVariable_GetGenericContainer :: (var: *SlangReflectionVariable) -> *SlangReflectionGeneric #foreign slang_compiler;
 
 spReflectionVariable_applySpecializations :: (var: *SlangReflectionVariable, generic: *SlangReflectionGeneric) -> *SlangReflectionVariable #foreign slang_compiler;
