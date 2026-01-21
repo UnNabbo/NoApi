@@ -275,6 +275,8 @@ Texture_Info :: struct{
 }
 
 gpu_malloc :: (size: s64, alignment: s64 = 16, kind: Memory_Kind = .DEFAULT) -> *void {
+	if size == 0 then return null;
+	
 	alloc_info: VmaAllocationCreateInfo ;
 	alloc_info.usage = ifx kind != .GPU then .AUTO else .GPU_ONLY;
 	alloc_info.flags = ifx kind != .GPU then .MAPPED_BIT | ifx kind == .DEFAULT || kind == .DESCRIPTORS then .HOST_ACCESS_SEQUENTIAL_WRITE_BIT;

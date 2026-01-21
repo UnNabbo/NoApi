@@ -14,7 +14,6 @@ Command_Buffer :: struct {
 	current_pipeline: *Pipeline;
 }
 
-
 Attachment :: struct {
 	Load_Op :: enum {
 		LOAD :: 0;
