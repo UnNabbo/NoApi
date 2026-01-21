@@ -7,6 +7,7 @@ Pipeline :: struct{
 	
 	#as handle: VkPipeline;
 	layout: VkPipelineLayout;
+
 	
 	usage: Kind;
 }
@@ -225,6 +226,7 @@ gpu_create_graphic_pipeline :: (vertex: Shader_IR, fragment: Shader_IR, rasteriz
 	push_constant_info[0].offset = 0;
 	push_constant_info[0].size = xx size_of(VkDeviceAddress);
 	push_constant_info[0].stageFlags = .VERTEX_BIT;
+	
 	push_constant_info[1].offset = xx size_of(VkDeviceAddress);
 	push_constant_info[1].size = xx size_of(VkDeviceAddress);
 	push_constant_info[1].stageFlags = .FRAGMENT_BIT;

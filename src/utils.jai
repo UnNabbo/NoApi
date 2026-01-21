@@ -139,11 +139,11 @@ delete :: (using tree: *Interval_Table, min_value: tree.range_type, max_value: t
 	}
 }
 
-find :: (using tree: *Interval_Table, value: tree.range_type) -> bool, tree.value_type {
+find :: (using tree: *Interval_Table, value: tree.range_type) -> bool, tree.value_type, *void {
 	node := root;
 	while node {
 		if value >= node.min && value <= node.max{
-			return true, node.value; 
+			return true, node.value, node; 
 		}
 		
 		if value > node.max{
@@ -157,7 +157,7 @@ find :: (using tree: *Interval_Table, value: tree.range_type) -> bool, tree.valu
 		}
 	}
 	v: tree.value_type;
-	return false, v;
+	return false, v, null;
 }
 
 find_ptr :: (using tree: *Interval_Table, value: tree.range_type) -> *tree.value_type {
@@ -180,6 +180,10 @@ find_ptr :: (using tree: *Interval_Table, value: tree.range_type) -> *tree.value
 	return null;
 }
 
+
+delete_node :: (using tree: *Interval_Table, node: *void){	
+	assert(delete(tree, cast(*tree.Node, node)), "Could not delete node");
+}
 
 #scope_file;
 
@@ -245,12 +249,13 @@ delete :: (using tree: *Interval_Table, node: *tree.Node, at_node: *tree.Node = 
 			orphan := ifx node.left then node.right else node.left;
 			if orphan{
 				orphan.parent = node.parent;
-				if node.parent{
-					if node == node.parent.left then node.parent.left = orphan;
-					if node == node.parent.right then node.parent.right = orphan;
-				} else {
-					root = orphan;
-				}
+			}
+			
+			if node.parent{
+				if node == node.parent.left then node.parent.left = orphan;
+				if node == node.parent.right then node.parent.right = orphan;
+			} else {
+				root = orphan;
 			}
 		}else if node.left && node.right {
 			node.height = max(node_height(node.left), node_height(node.right)) + 1;
