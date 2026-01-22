@@ -411,7 +411,6 @@ gpu_create_texture :: (using info: Texture_Info, kind: Memory_Kind = .GPU) ->  T
 	if texture.usage & .DEPTH_STENCIL_ATTACHMENT then view_info.subresourceRange.aspectMask = .DEPTH_BIT;
 	else view_info.subresourceRange.aspectMask = .COLOR_BIT;
 
-
 	vk_assert(vkCreateImageView(device, *view_info, null, *texture.view));
 	
 	return texture;
