@@ -17,6 +17,11 @@ gpu_compile_shader :: (path: string, debug := RENDERING_DEBUG, is_file := true, 
             Slang.CompilerOptionValueKind.String, 0, 0, "slang", null
         }
     });
+	array_add(*options, .{
+        Slang.CompilerOptionName.Capability, .{
+            Slang.CompilerOptionValueKind.Int, xx Slang.IGlobalSession_findCapability(slang_global_session, "spirv_1_6"), 0, null, null
+        }
+    });
     array_add(*options, .{
         Slang.CompilerOptionName.GLSLForceScalarLayout, .{
             Slang.CompilerOptionValueKind.Int, 1, 0, null, null
@@ -42,7 +47,7 @@ gpu_compile_shader :: (path: string, debug := RENDERING_DEBUG, is_file := true, 
 
     target_desc: Slang.TargetDesc;
     target_desc.format = .SLANG_SPIRV;
-    //target_desc.profile = Slang.IGlobalSession_findProfile(slang_global_session, "spirv_1_4");
+    target_desc.profile = Slang.IGlobalSession_findProfile(slang_global_session, "spirv_1_6");
     target_desc.forceGLSLScalarBufferLayout = true;
     target_desc.flags = xx Slang.SLANG_TARGET_FLAG.GENERATE_SPIRV_DIRECTLY;
     target_desc.compilerOptionEntries = options.data;
@@ -85,6 +90,9 @@ gpu_compile_shader :: (path: string, debug := RENDERING_DEBUG, is_file := true, 
     spirv_code_raw.data = alloc(size_of(u8) * spirv_code_raw.count);
     memcpy(spirv_code_raw.data, Slang.ISlangBlob_getBufferPointer(spirv_code), spirv_code_raw.count);
 
+	output_path := tprint("%_val.spv", actual_path);
+    write_entire_file(output_path, spirv_code_raw.data, spirv_code_raw.count);
+	
     Slang.ISlangUnknown_release(spirv_code);
 
     return true, spirv_code_raw;

@@ -313,10 +313,14 @@ gpu_malloc :: (size: s64, alignment: s64 = 16, kind: Memory_Kind = .DEFAULT, loc
 	ptr : * void;
 	if kind == .GPU {
 		ptr = cast(*void, allocation.handle);
+		assert(ptr != null, "Allocated pointer is null");
+		
 		allocation.base = cast(u64, ptr);
 		add(*device.allocator.gpu, allocation.base, allocation.base + allocation.size, allocation);
 	}else{
 		ptr = allocation.info.pMappedData;
+		assert(ptr != null, "Allocated pointer is null");
+		
 		allocation.base = cast(u64, ptr);
 		add(*device.allocator.cpu, allocation.base, allocation.base + allocation.size, allocation);
 		memset(ptr, 0, xx allocation.size);
@@ -351,6 +355,7 @@ gpu_free :: (ptr: *void, loc := #caller_location){
 	allocation, node := get_cpu_metadata(ptr);
 	memory_stats.used -= allocation.size;
 	vmaDestroyBuffer(device.allocator,xx allocation.buffer, allocation);
+	delete_node(*device.allocator.cpu, node);
 	delete_node(*device.allocator.cpu, node);
 }
 

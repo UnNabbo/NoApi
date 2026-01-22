@@ -217,16 +217,13 @@ create_physical_device :: (instance: *Instance) -> Physical_Device{
 			}
 		}
 		
-		if (device_properties.deviceType == .DISCRETE_GPU) {
-			device.available_queues = families;
-			device.handle = physical_device;
-			//log("%", families);
-			break;
-		}else{
-			array_free(families);
-		}
+		device.available_queues = families;
+		device.handle = physical_device;
+		if (device_properties.deviceType == .DISCRETE_GPU) 	break;
 	}
 
+	assert(device.handle != NULL_HANDLE, "Could not find valid physical device");
+	
 	props2 := VkPhysicalDeviceProperties2.{pNext = *device.proprieties};
 	vkGetPhysicalDeviceProperties2(device, *props2);
 	device.alignment = xx device.proprieties.descriptorBufferOffsetAlignment;
