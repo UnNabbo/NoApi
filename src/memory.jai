@@ -280,7 +280,7 @@ Texture_Info :: struct{
 
 gpu_malloc :: (size: s64, alignment: s64 = 16, kind: Memory_Kind = .DEFAULT, loc := #caller_location) -> *void {
 	if size == 0 {
-		#if RENDERING_DEBUG then log("[Memory][Warn] Trying to allocate memory with size 0");
+		#if VALIDATION_LAYERS then log("[Memory][Warn] Trying to allocate memory with size 0");
 		return null;
 	}
 	
@@ -410,6 +410,7 @@ gpu_create_texture :: (using info: Texture_Info, kind: Memory_Kind = .GPU) ->  T
     view_info.subresourceRange.layerCount = 1;
 	if texture.usage & .DEPTH_STENCIL_ATTACHMENT then view_info.subresourceRange.aspectMask = .DEPTH_BIT;
 	else view_info.subresourceRange.aspectMask = .COLOR_BIT;
+
 
 	vk_assert(vkCreateImageView(device, *view_info, null, *texture.view));
 	

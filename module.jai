@@ -1,4 +1,4 @@
-#module_parameters(IMPORT_SLANG_COMPILER := true, RENDERING_DEBUG := true);
+#module_parameters(VALIDATION_LAYERS := true, SHADER_DEBUG := true, IMPORT_SLANG_COMPILER := true);
 
 #load "src/utils.jai";
 #load "src/init.jai";

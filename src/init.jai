@@ -45,7 +45,7 @@ Physical_Device :: struct {
 
 Instance :: struct{
 	#as handle: VkInstance;
-	#if RENDERING_DEBUG{
+	#if VALIDATION_LAYERS{
 		debug_messenger: VkDebugUtilsMessengerEXT ;
 	}
 }
@@ -63,7 +63,7 @@ create_instance :: () -> Instance	 {
 	instance_info: VkInstanceCreateInfo;
 	instance_info.pApplicationInfo = *app_info;
 
-	#if RENDERING_DEBUG{
+	#if VALIDATION_LAYERS{
 		#if OS == .WINDOWS {
 			extensions: []* u8 = .[VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME, "VK_EXT_debug_utils"];
 		} else #if OS == .LINUX {
@@ -80,7 +80,7 @@ create_instance :: () -> Instance	 {
 	instance_info.enabledExtensionCount = xx extensions.count;
 	instance_info.ppEnabledExtensionNames = extensions.data;
 	
-	#if RENDERING_DEBUG{
+	#if VALIDATION_LAYERS{
 		//TODO MAYBE CHECK FOR SUPPORT
 		validation_layers: [] *u8 = .[
 		"VK_LAYER_LUNARG_monitor", "VK_LAYER_KHRONOS_validation"
@@ -138,7 +138,7 @@ create_instance :: () -> Instance	 {
 
 	vk_assert(vkCreateInstance(*instance_info, null, *instance.handle));
 
-	#if RENDERING_DEBUG{
+	#if VALIDATION_LAYERS{
 		get_instance_proc_add(instance.handle, "vkCreateDebugUtilsMessengerEXT");
 		vk_assert(vkCreateDebugUtilsMessengerEXT(instance.handle, *messenger_info, null, *instance.debug_messenger));
 	}
