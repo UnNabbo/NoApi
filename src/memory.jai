@@ -321,8 +321,6 @@ gpu_malloc :: (size: s64, alignment: s64 = 16, kind: Memory_Kind = .DEFAULT, loc
 		ptr = allocation.info.pMappedData;
 		assert(ptr != null, "Allocated pointer is null");
 
-		log("%", allocation.buffer);
-		
 		allocation.base = cast(u64, ptr);
 
 		add(*device.allocator.cpu, allocation.base, allocation.base + allocation.size, allocation);

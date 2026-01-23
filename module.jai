@@ -26,11 +26,11 @@ gpu_init :: (texture_heap_size: s64, rwtexture_heap_size: s64, queues: ..Queue_R
 	gpu_context.rwtexture_heap_size = rwtexture_heap_size;
 
 	
-#if false{
-	layout := create_texture_heap_descriptor_set_layout();
-	global_pipeline_layout.pSetLayouts = texture_layout.data;
-	global_pipeline_layout.setLayoutCount = xx texture_layout.count;
-}
+	#if false{
+		layout := create_texture_heap_descriptor_set_layout();
+		global_pipeline_layout.pSetLayouts = texture_layout.data;
+		global_pipeline_layout.setLayoutCount = xx texture_layout.count;
+	}
 }
 
 gpu_create_swapchain :: (window: Window_Type, width:s32, height: s32, present_mode: Swap_Chain_Present_Mode) {
@@ -41,10 +41,10 @@ gpu_create_swapchain :: (window: Window_Type, width:s32, height: s32, present_mo
 
 gpu_resize_swapchain :: (width: s32, height: s32) {
 	vkDeviceWaitIdle(device);
-	destroy_swapchain(*swapchain);
-	destroy_surface(*surface);
+	//destroy_swapchain(*swapchain);
+	//destroy_surface(*surface);
 	surface = create_surface(window_handle);
-	swapchain = create_swapchain(surface, width, height, swapchain.present_mode);
+	swapchain = create_swapchain(surface, width, height, swapchain.present_mode, swapchain);
 }
 
 gpu_context: *Rendering_Context;

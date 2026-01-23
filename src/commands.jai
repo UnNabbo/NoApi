@@ -112,18 +112,18 @@ gpu_scoped_render_pass :: (buffer: Command_Buffer, render_pass: Render_Pass_Desc
 	`defer gpu_end_render_pass(buffer);
 }
 
-gpu_begin_render_pass :: (buffer: Command_Buffer, render_pass: Render_Pass_Descriptor) {
+gpu_begin_render_pass :: (buffer: Command_Buffer, render_pass: Render_Pass_Descriptor, width_extent: u32 = 0, height_extent: u32 = 0) {
 	render_info: VkRenderingInfo;
 
-	width, height: u32;
+	width, height := width_extent, height_extent;
 	assert(render_pass.color_targets.count != 0, "Cannot begin a render pass without a single color target"); //NOTE: i dont' think there will ever be a case where you start a render pass without a color targer
 	
     render_info.layerCount = 1;
 	attachments := array_new(render_pass.color_targets.count, VkRenderingAttachmentInfo,, temp);
 	for * render_pass.color_targets{
 		assert(it.texture != null, "Attachment texture cannot be null");
-		width = max(width, it.texture.extent.width);
-		height = max(height, it.texture.extent.height);
+		if !width_extent then width = max(width, it.texture.extent.width);
+		if !height_extent then height = max(height, it.texture.extent.height);
 		if it.texture.layout == .UNDEFINED then transition_image_layout(buffer, it.texture, .GENERAL);
 		attachments[it_index] = to_vk_attachment(it);
 	}
@@ -221,7 +221,8 @@ gpu_copy_to_texture :: (buffer: Command_Buffer, texture: *Texture, data: *void) 
 	vkCmdCopyBufferToImage(buffer, allocation.buffer, texture, xx texture.layout, 1,  *copy_region);
 }
 
-gpu_blit_textures :: (buffer: Command_Buffer, source: *Texture, destination: *Texture) {
+
+gpu_blit_textures :: (buffer: Command_Buffer, source: *Texture, source_width: s32, source_height: s32, destination: *Texture, destination_width: s32, destination_height: s32) {
 	source_layout := source.layout;
 	destination_layout := destination.layout;
 	
@@ -229,11 +230,11 @@ gpu_blit_textures :: (buffer: Command_Buffer, source: *Texture, destination: *Te
 	transition_image_layout(buffer, destination, .TRANSFER_DST_OPTIMAL);
 	
 	blit_region: VkImageBlit2;
-	blit_region.srcOffsets[1].x = xx source.extent.width;
-	blit_region.srcOffsets[1].y = xx source.extent.height;
+	blit_region.srcOffsets[1].x = source_width;
+	blit_region.srcOffsets[1].y = source_height;
 	blit_region.srcOffsets[1].z = 1;
-	blit_region.dstOffsets[1].x = xx destination.extent.width;
-	blit_region.dstOffsets[1].y = xx destination.extent.height;
+	blit_region.dstOffsets[1].x = destination_width;
+	blit_region.dstOffsets[1].y = destination_height;
 	blit_region.dstOffsets[1].z = 1;
 	blit_region.srcSubresource.aspectMask = .COLOR_BIT;
 	blit_region.srcSubresource.baseArrayLayer = 0;
@@ -257,6 +258,14 @@ gpu_blit_textures :: (buffer: Command_Buffer, source: *Texture, destination: *Te
  	
 	if source_layout != .UNDEFINED then transition_image_layout(buffer, source, source_layout);
 	if destination_layout != .UNDEFINED then transition_image_layout(buffer, destination, destination_layout);
+}
+
+gpu_blit_textures :: (buffer: Command_Buffer, source: *Texture, source_width: s32, source_height: s32, destination: *Texture) {
+	gpu_blit_textures(buffer, source, source_width, source_height, destination, xx destination.extent.width, xx destination.extent.height);
+}
+
+gpu_blit_textures :: (buffer: Command_Buffer, source: *Texture, destination: *Texture) {
+	gpu_blit_textures(buffer, source, xx source.extent.width, xx source.extent.height, destination, xx destination.extent.width, xx destination.extent.height);
 }
 
 gpu_set_depth_state :: ( buffer: Command_Buffer, using state: Depth_Stencil)
@@ -301,12 +310,13 @@ gpu_bind_texture_heap :: (buffer: Command_Buffer, sampling_ptr: *void, rw_ptr: *
 	vkCmdSetDescriptorBufferOffsetsEXT(buffer, xx buffer.current_pipeline.usage, buffer.current_pipeline.layout,xx ifx sampling_ptr then 0 else 1, xx ifx sampling_ptr && rw_ptr then 2 else 1, index.data, offset.data);
 }
 
-gpu_present :: (buffer: Command_Buffer, queue: *Queue, image: *Texture) -> s32{
+gpu_present :: (buffer: Command_Buffer, queue: *Queue, image: *Texture, width: s32, height: s32) -> s32{
 	queue.present = true;
 	swapchain.current_sync = xx ((swapchain.current_sync + 1) % (swapchain.semaphores.count ));
 	error := vkAcquireNextImageKHR(device, swapchain, U64_MAX, swapchain.semaphores[swapchain.current_sync], NULL_HANDLE, *swapchain.current_image);
 	if error != VkResult.VK_SUCCESS return 1;
-	gpu_blit_textures(buffer, image, *swapchain.images[swapchain.current_image]);
+	if !width || !height then gpu_blit_textures(buffer, image, *swapchain.images[swapchain.current_image]);
+	else gpu_blit_textures(buffer, image, width, height, *swapchain.images[swapchain.current_image]);
 	transition_image_layout(buffer, *swapchain.images[swapchain.current_image], .PRESENT_SRC);
 	return 0;
 }
