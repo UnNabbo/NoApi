@@ -90,228 +90,282 @@ align_to :: (value: $T, alignment: T) -> T{
 }
 
 
-Interval_Table :: struct($range_type: Type, $value_type: Type){
-	Node :: struct {
-		height: s64 = 1;
-		left, right, parent: *Node;
-		min, max: range_type;
+#if false{
+	Interval_Table :: struct($range_type: Type, $value_type: Type){
+		Node :: struct {
+			height: s64 = 1;
+			left, right, parent: *Node;
+			min, max: range_type;
+			value: value_type;
+		}
+
+		root: *Node;
+		pool: Flat_Pool;
+	}
+
+	add :: (using tree: *Interval_Table, min_value: tree.range_type, max_value: tree.range_type){
 		value: value_type;
+		add(tree, min_value, max_value, value);
 	}
 
-	root: *Node;
-	pool: Flat_Pool;
-}
-
-add :: (using tree: *Interval_Table, min_value: tree.range_type, max_value: tree.range_type){
-	value: value_type;
-	add(tree, min_value, max_value, value);
-}
-
-add :: (using tree: *Interval_Table, min_value: tree.range_type, max_value: tree.range_type, value: tree.value_type){
-	node := get(*tree.pool, Node);
-	node.min = min_value;
-	node.max = max_value - 1;
-	node.value = value;
+	add :: (using tree: *Interval_Table, min_value: tree.range_type, max_value: tree.range_type, value: tree.value_type){
+		node := get(*tree.pool, Node);
+		node.min = min_value;
+		node.max = max_value - 1;
+		node.value = value;
 	
-	if !tree.root {
-		tree.root = node;
-		tree.root.height = 1;
+		if !tree.root {
+			tree.root = node;
+			tree.root.height = 1;
+		}
+			else insert(tree, node);
 	}
-	else insert(tree, node);
-}
 
-delete :: (using tree: *Interval_Table, min_value: tree.range_type, max_value: tree.range_type){
-	node := root;
-	while node {
-		if min_value == node.min && max_value == node.max{
-			delete(tree, node);
-		}
+	delete :: (using tree: *Interval_Table, min_value: tree.range_type, max_value: tree.range_type){
+		node := root;
+		while node {
+			if min_value == node.min && max_value == node.max{
+				delete(tree, node);
+			}
 		
-		if min_value > node.max{
-			node = node.right;
-			continue;
-		}
+			if min_value > node.max{
+				node = node.right;
+				continue;
+			}
 
-		if max_value < node.min{
-			node = node.left;
-			continue;
-		}
-	}
-}
-
-find :: (using tree: *Interval_Table, value: tree.range_type) -> bool, tree.value_type, *void {
-	node := root;
-	while node {
-		if value >= node.min && value <= node.max{
-			return true, node.value, node; 
-		}
-		
-		if value > node.max{
-			node = node.right;
-			continue;
-		}
-
-		if value < node.min{
-			node = node.left;
-			continue;
+			if max_value < node.min{
+				node = node.left;
+				continue;
+			}
 		}
 	}
-	v: tree.value_type;
-	return false, v, null;
-}
 
-find_ptr :: (using tree: *Interval_Table, value: tree.range_type) -> *tree.value_type {
-	node := root;
-	while node {
-		if value >= node.min && value <= node.max{
-			return *node.value; 
+	find :: (using tree: *Interval_Table, value: tree.range_type) -> bool, tree.value_type, *void {
+		node := root;
+		while node {
+			if value >= node.min && value <= node.max{
+				return true, node.value, node; 
+			}
+		
+			if value > node.max{
+				node = node.right;
+				continue;
+			}
+
+			if value < node.min{
+				node = node.left;
+				continue;
+			}
+		}
+		v: tree.value_type;
+		return false, v, null;
+	}
+
+	find_ptr :: (using tree: *Interval_Table, value: tree.range_type) -> *tree.value_type {
+		node := root;
+		while node {
+			if value >= node.min && value <= node.max{
+				return *node.value; 
+			}
+		
+			if value > node.max{
+				node = node.right;
+				continue;
+			}
+
+			if value < node.min{
+				node = node.left;
+				continue;
+			}
+		}
+		return null;
+	}
+
+
+	delete_node :: (using tree: *Interval_Table, node: *void){	
+		assert(delete(tree, cast(*tree.Node, node)), "Could not delete node");
+	}
+
+	#scope_file;
+
+
+	node_height :: node => ifx node then node.height else 0;
+	node_balance :: node => ifx node then node_height(node.left) - node_height(node.right) else 0;
+
+	rotate_left ::  (using tree: *Interval_Table, x: *tree.Node) -> *tree.Node{
+		y := x.right;
+		pivot := y.left;
+
+		y.left = x;
+		x.right = pivot;
+		
+		x.height = max(node_height(x.left), node_height(x.right)) + 1;
+		y.height = max(node_height(y.left), node_height(y.right)) + 1;
+
+		if x.parent {
+			if x == x.parent.left then x.parent.left = y;
+			if x == x.parent.right then x.parent.right = y;
 		}
 		
-		if value > node.max{
-			node = node.right;
-			continue;
+		y.parent = x.parent;
+		x.parent = y;
+		if x == root then root = y;
+		return y;
+	}
+
+	rotate_right ::  (using tree: *Interval_Table,y: *tree.Node)  -> *tree.Node{
+		x := y.left;
+		pivot := x.right;
+
+		x.right = y;
+		y.left = pivot;
+		
+		y.height = max(node_height(y.left), node_height(y.right)) + 1;
+		x.height = max(node_height(x.left), node_height(x.right)) + 1;
+
+		if y.parent {
+			if y == y.parent.left then y.parent.left = x;
+			if y == y.parent.right then y.parent.right = x;
 		}
-
-		if value < node.min{
-			node = node.left;
-			continue;
-		}
+		
+		x.parent = y.parent;
+		y.parent = x;
+		if y == root then root = x;
+		return x;
 	}
-	return null;
-}
-
-
-delete_node :: (using tree: *Interval_Table, node: *void){	
-	assert(delete(tree, cast(*tree.Node, node)), "Could not delete node");
-}
-
-#scope_file;
-
-
-node_height :: node => ifx node then node.height else 0;
-node_balance :: node => ifx node then node_height(node.left) - node_height(node.right) else 0;
-
-rotate_left ::  (using tree: *Interval_Table, x: *tree.Node) -> *tree.Node{
-	y := x.right;
-	pivot := y.left;
-
-	y.left = x;
-	x.right = pivot;
-		
-	x.height = max(node_height(x.left), node_height(x.right)) + 1;
-	y.height = max(node_height(y.left), node_height(y.right)) + 1;
-
-	if x.parent {
-		if x == x.parent.left then x.parent.left = y;
-		if x == x.parent.right then x.parent.right = y;
-	}
-		
-	y.parent = x.parent;
-	x.parent = y;
-	if x == root then root = y;
-	return y;
-}
-
-rotate_right ::  (using tree: *Interval_Table,y: *tree.Node)  -> *tree.Node{
-	x := y.left;
-	pivot := x.right;
-
-	x.right = y;
-	y.left = pivot;
-		
-	y.height = max(node_height(y.left), node_height(y.right)) + 1;
-	x.height = max(node_height(x.left), node_height(x.right)) + 1;
-
-	if y.parent {
-		if y == y.parent.left then y.parent.left = x;
-		if y == y.parent.right then y.parent.right = x;
-	}
-		
-	x.parent = y.parent;
-	y.parent = x;
-	if y == root then root = x;
-	return x;
-}
 	
-delete :: (using tree: *Interval_Table, node: *tree.Node, at_node: *tree.Node = null) -> bool{
-	at := ifx at_node then at_node else root;
+	delete :: (using tree: *Interval_Table, node: *tree.Node, at_node: *tree.Node = null) -> bool{
+		at := ifx at_node then at_node else root;
 
-	if node != at_node{
-		if node.min >= at.max {
-			if at.right then return delete(tree, node, at.right);
+		if node != at_node{
+			if node.min >= at.max {
+				if at.right then return delete(tree, node, at.right);
+			}
+	
+			if node.max <= at.min{
+				if at.left then return delete(tree, node, at.left);
+			}
+		}else{
+			if !node.left || !node.right{
+				orphan := ifx node.left then node.right else node.left;
+				if orphan{
+					orphan.parent = node.parent;
+				}
+			
+				if node.parent{
+					if node == node.parent.left then node.parent.left = orphan;
+					if node == node.parent.right then node.parent.right = orphan;
+				} else {
+					root = orphan;
+				}
+			}else if node.left && node.right {
+				node.height = max(node_height(node.left), node_height(node.right)) + 1;
+				balance := node_balance(node);
+				if balance > 1 && node_balance(root.left) >= 0 then rotate_right(tree, root);
+				if balance < -1 && node_balance(root.right) <= 0 then rotate_left(tree, root);
+			
+				if balance > 1 && node_balance(root.left) < 0 {
+					root.left =  rotate_left(tree, root.left);
+					rotate_right(tree, root);
+				}
+				if balance < -1 && node_balance(root.right) > 0{
+					root.right = rotate_right(tree, root.right);
+					rotate_left(tree, root);
+				}
+			}
+			return true;
+		}
+		return false;
+	}
+
+
+	insert :: (using tree: *Interval_Table, node: *tree.Node, at_node: *tree.Node = null){
+		at := ifx at_node then at_node else root;
+		assert(node.min != at.min || node.max != at.max, "Cannot insert a duplicate interval(%, %) - (%, %)", node.min, node.max, at.min, at.max);
+		assert(node.min > at.min || node.max < at.max, "Cannot insert an interval containing another interval");
+		assert(node.min < at.min || node.max > at.max, "Cannot insert an overlapping interval");
+		if node.min >= at.max{
+			if !at.right {
+				at.right = node;
+				node.parent = at;
+			} else insert(tree, node, at.right);
 		}
 	
 		if node.max <= at.min{
-			if at.left then return delete(tree, node, at.left);
+			if !at.left {
+				at.left = node;
+				node.parent = at;
+			} else insert(tree, node, at.left);
 		}
-	}else{
-		if !node.left || !node.right{
-			orphan := ifx node.left then node.right else node.left;
-			if orphan{
-				orphan.parent = node.parent;
-			}
-			
-			if node.parent{
-				if node == node.parent.left then node.parent.left = orphan;
-				if node == node.parent.right then node.parent.right = orphan;
-			} else {
-				root = orphan;
-			}
-		}else if node.left && node.right {
-			node.height = max(node_height(node.left), node_height(node.right)) + 1;
-			balance := node_balance(node);
-			if balance > 1 && node_balance(root.left) >= 0 then rotate_right(tree, root);
-			if balance < -1 && node_balance(root.right) <= 0 then rotate_left(tree, root);
-			
-			if balance > 1 && node_balance(root.left) < 0 {
-				root.left =  rotate_left(tree, root.left);
-				rotate_right(tree, root);
-			}
-			if balance < -1 && node_balance(root.right) > 0{
-				root.right = rotate_right(tree, root.right);
-				rotate_left(tree, root);
-			}
+
+		at.height = max(node_height(at.left), node_height(at.right)) + 1;
+		balance := node_height(at.left) - node_height(at.right);
+		if balance == 0 then return;
+		if balance > 1 && node.max <= at.min{
+			rotate_right(tree, at);
 		}
-		return true;
+		if balance < -1 && node.min >= at.max  {
+			rotate_left(tree, at);
+		}
+		if balance > 1 && !(node.max <= at.min){
+			at.left = rotate_left(tree, at.left);
+			rotate_right(tree, at);
+		}
+		if balance < -1 && !(node.min >= at.max)  {
+			at.right = rotate_right(tree, at.right);
+			rotate_left(tree, at);
+		}
 	}
-	return false;
-}
 
+}else{
+	Interval_Table :: struct($range_type: Type, $value_type: Type){
+		Entry :: struct {
+			min, max: range_type;
+			value: value_type;
+		}
 
-insert :: (using tree: *Interval_Table, node: *tree.Node, at_node: *tree.Node = null){
-	at := ifx at_node then at_node else root;
-	assert(node.min != at.min || node.max != at.max, "Cannot insert a duplicate interval(%, %) - (%, %)", node.min, node.max, at.min, at.max);
-	assert(node.min > at.min || node.max < at.max, "Cannot insert an interval containing another interval");
-	assert(node.min < at.min || node.max > at.max, "Cannot insert an overlapping interval");
-	if node.min >= at.max{
-		if !at.right {
-			at.right = node;
-			node.parent = at;
-		} else insert(tree, node, at.right);
+		memory: [..] Entry ;
+	}
+
+	add :: (using tree: *Interval_Table, min_value: tree.range_type, max_value: tree.range_type){
+		value: value_type;
+		add(tree, min_value, max_value, value);
+	}
+
+	add :: (using tree: *Interval_Table, min_value: tree.range_type, max_value: tree.range_type, value: tree.value_type){
+		array_add(*tree.memory, .{min_value, max_value, value});
+	}
+
+	delete :: (using tree: *Interval_Table, min_value: tree.range_type, max_value: tree.range_type){
+		for * tree.memory{
+			if it.min <= min_value && it.max <=  it.max{
+				remove it;
+				break;
+			}
+		}
+	}
+
+	delete :: (using tree: *Interval_Table, value: tree.range_type){
+		for * tree.memory{
+			if it.min <= value && it.max >=  value{
+				remove it;
+				break;
+			}
+		}
 	}
 	
-	if node.max <= at.min{
-		if !at.left {
-			at.left = node;
-			node.parent = at;
-		} else insert(tree, node, at.left);
+	find_ptr :: (using tree: *Interval_Table, value: tree.range_type) -> *tree.value_type {
+		for * tree.memory{
+			if it.min <= value && it.max >=  value{
+				return *it.value;
+			}
+		}
+		return null;
+	}
+	
+	find :: (using tree: *Interval_Table, value: tree.range_type) -> bool, tree.value_type {
+		ptr := find_ptr(tree, value);
+		return ptr != null, ptr.*;
 	}
 
-	at.height = max(node_height(at.left), node_height(at.right)) + 1;
-	balance := node_height(at.left) - node_height(at.right);
-	if balance == 0 then return;
-	if balance > 1 && node.max <= at.min{
-		rotate_right(tree, at);
-	}
-	if balance < -1 && node.min >= at.max  {
-		rotate_left(tree, at);
-	}
-	if balance > 1 && !(node.max <= at.min){
-		at.left = rotate_left(tree, at.left);
-		rotate_right(tree, at);
-	}
-	if balance < -1 && !(node.min >= at.max)  {
-		at.right = rotate_right(tree, at.right);
-		rotate_left(tree, at);
-	}
 }

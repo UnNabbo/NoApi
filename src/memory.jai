@@ -352,10 +352,10 @@ gpu_malloc :: (array: []$type, kind: Memory_Kind = .DEFAULT, loc := #caller_loca
 }
 
 gpu_free :: (ptr: *void, loc := #caller_location){
-	allocation, node := get_cpu_metadata(ptr);
+	allocation := get_cpu_metadata(ptr);
 	memory_stats.used -= allocation.size;
 	vmaDestroyBuffer(device.allocator,xx allocation.buffer, allocation);
-	delete_node(*device.allocator.cpu, node);
+	delete(*device.allocator.cpu, xx ptr);
 }
 
 gpu_host_to_device_address :: (ptr: *void) -> *void{
@@ -502,10 +502,10 @@ GPU_Allocator :: struct{
 	metadata: Flat_Pool;
 }
 
-get_cpu_metadata :: (ptr: *void) -> *GPU_Allocation, *void{
-	found, metadata, node := find(*device.allocator.cpu, xx ptr);
+get_cpu_metadata :: (ptr: *void) -> *GPU_Allocation{
+	found, metadata := find(*device.allocator.cpu, xx ptr);
 	assert(found, "Could not locate pointer(%) to mapped memory", ptr);
-	return metadata, node;
+	return metadata;
 }
 
 get_gpu_metadata :: (ptr: *void) -> *GPU_Allocation{
