@@ -30,7 +30,7 @@ create_swapchain :: (surface: Surface, width:s32, height: s32, present_mode: Swa
 	swapchain.present_mode = .FIFO;
 	for surface.present_modes{
 		if it == .IMMEDIATE_KHR && present_mode == .MAILBOX{
-			swapchain.present_mode = present_mode;
+			swapchain.present_mode = .IMMEDIATE_KHR;
 		}
 		
 		if it == xx present_mode {
