@@ -320,8 +320,11 @@ gpu_malloc :: (size: s64, alignment: s64 = 16, kind: Memory_Kind = .DEFAULT, loc
 	}else{
 		ptr = allocation.info.pMappedData;
 		assert(ptr != null, "Allocated pointer is null");
+
+		log("%", allocation.buffer);
 		
 		allocation.base = cast(u64, ptr);
+
 		add(*device.allocator.cpu, allocation.base, allocation.base + allocation.size, allocation);
 		memset(ptr, 0, xx allocation.size);
 	}
@@ -355,7 +358,7 @@ gpu_free :: (ptr: *void, loc := #caller_location){
 	allocation := get_cpu_metadata(ptr);
 	memory_stats.used -= allocation.size;
 	vmaDestroyBuffer(device.allocator,xx allocation.buffer, allocation);
-	delete(*device.allocator.cpu, xx ptr);
+	delete(*device.allocator.cpu, allocation.base, allocation.base + allocation.size);
 }
 
 gpu_host_to_device_address :: (ptr: *void) -> *void{
@@ -425,8 +428,6 @@ gpu_destroy_texture :: (texture: *Texture){
 
 gpu_create_texture_heap :: () -> *Texture_Descriptor{
 	data := gpu_malloc(texture_heap_size, Texture_Descriptor, .DESCRIPTORS);
-	metadata := get_cpu_metadata(data);
-	metadata.additional_data = get(*device.allocator.metadata, texture_heap_size * size_of(VkSampler));
 	return data;
 }
 
@@ -436,7 +437,8 @@ gpu_create_rw_texture_heap :: () -> *RWTexture_Descriptor{
 
 gpu_create_texture_view_descriptor :: (ptr: *Texture_Descriptor, index: u64, texture: Texture){
 	metadata := get_cpu_metadata(ptr);
-
+	if !metadata.additional_data then metadata.additional_data = get(*device.allocator.metadata, texture_heap_size * size_of(VkSampler));
+	
 	get_info: VkDescriptorGetInfoEXT;
 	get_info.type = .COMBINED_IMAGE_SAMPLER;
 
@@ -491,7 +493,6 @@ GPU_Allocation :: struct {
 	size: u64;
 
 	buffer: VkBuffer;
-	
 	additional_data: *void;
 }
 

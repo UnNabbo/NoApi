@@ -318,54 +318,60 @@ align_to :: (value: $T, alignment: T) -> T{
 	}
 
 }else{
-	Interval_Table :: struct($range_type: Type, $value_type: Type){
+	Interval_Table :: struct($Range_Type: Type, $Value_Type: Type){
 		Entry :: struct {
-			min, max: range_type;
-			value: value_type;
+			min, max: Range_Type;
+			value: Value_Type;
 		}
 
-		memory: [..] Entry ;
+		entries: [..] Entry;
+		free_list: [..] *Entry;
 	}
 
-	add :: (using tree: *Interval_Table, min_value: tree.range_type, max_value: tree.range_type){
+	add :: (using tree: *Interval_Table, min_value: tree.Range_Type, max_value: tree.Value_Type){
 		value: value_type;
 		add(tree, min_value, max_value, value);
 	}
 
-	add :: (using tree: *Interval_Table, min_value: tree.range_type, max_value: tree.range_type, value: tree.value_type){
-		array_add(*tree.memory, .{min_value, max_value, value});
+	add :: (using tree: *Interval_Table, min_value: tree.Range_Type, max_value: tree.Range_Type, value: tree.Value_Type){
+		entry: Entry;
+		entry.min = min_value;
+		entry.max = max_value;
+		entry.value = value;
+		
+		if free_list.count {
+			free_list[free_list.count - 1].* = entry;
+			free_list.count -= 1;
+		} else{
+			array_add(*tree.entries, entry);
+		}
 	}
 
-	delete :: (using tree: *Interval_Table, min_value: tree.range_type, max_value: tree.range_type){
-		for * tree.memory{
-			if it.min <= min_value && it.max <=  it.max{
-				remove it;
+	delete :: (using tree: *Interval_Table, min_value: tree.Range_Type, max_value: tree.Range_Type){
+		for * tree.entries{
+			if it.min == min_value && it.max == max_value  {
+				array_add(*free_list, it);
 				break;
 			}
 		}
 	}
 
-	delete :: (using tree: *Interval_Table, value: tree.range_type){
-		for * tree.memory{
-			if it.min <= value && it.max >=  value{
-				remove it;
+	delete :: (using tree: *Interval_Table, value: tree.Range_Type){
+		for * tree.entries{
+			if it.min <= value && value < it.max  {
+				array_add(*free_list, it);
 				break;
 			}
 		}
 	}
-	
-	find_ptr :: (using tree: *Interval_Table, value: tree.range_type) -> *tree.value_type {
-		for * tree.memory{
-			if it.min <= value && it.max >=  value{
-				return *it.value;
+
+	find :: (using tree: *Interval_Table, value: tree.Range_Type) -> bool, tree.Value_Type {
+		for tree.entries{
+			if it.min <= value && value < it.max  {
+				return true, it.value;
 			}
 		}
-		return null;
+		empty: tree.Value_Type;
+		return false, empty;
 	}
-	
-	find :: (using tree: *Interval_Table, value: tree.range_type) -> bool, tree.value_type {
-		ptr := find_ptr(tree, value);
-		return ptr != null, ptr.*;
-	}
-
 }
