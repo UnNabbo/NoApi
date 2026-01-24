@@ -433,7 +433,16 @@ gpu_create_rw_texture_heap :: () -> *RWTexture_Descriptor{
 	return gpu_malloc(rwtexture_heap_size, RWTexture_Descriptor, .DESCRIPTORS);
 }
 
-gpu_create_texture_view_descriptor :: (ptr: *Texture_Descriptor, index: u64, texture: Texture){
+
+Sampling_Method :: enum {
+    NEAREST   :: 0;
+    LINEAR    :: 1;
+    CUBIC_EXT :: 1000015000;
+    CUBIC_IMG :: 1000015000;
+}
+
+
+gpu_create_texture_view_descriptor :: (ptr: *Texture_Descriptor, index: u64, texture: Texture, sampling: Sampling_Method = .NEAREST){
 	metadata := get_cpu_metadata(ptr);
 	if !metadata.additional_data then metadata.additional_data = get(*device.allocator.metadata, texture_heap_size * size_of(VkSampler));
 	
@@ -446,8 +455,9 @@ gpu_create_texture_view_descriptor :: (ptr: *Texture_Descriptor, index: u64, tex
 		sampler.* = VK_NULL_HANDLE;
 	}
 	sampler_info: VkSamplerCreateInfo ;
-	sampler_info.magFilter = .LINEAR;
-	sampler_info.minFilter = .LINEAR;
+	sampler_info.magFilter = xx sampling;
+	sampler_info.minFilter = xx sampling;
+
 	//sampler_info.addressModeU = .MIRRORED_REPEAT;
 	//sampler_info.addressModeV = .MIRRORED_REPEAT;
 	//sampler_info.addressModeW = .MIRRORED_REPEAT;
