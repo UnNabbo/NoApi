@@ -51,7 +51,7 @@ gpu_create_queue :: (kind: Queue_Family.Kind) -> Queue {
 		queue.kind = kind;
 		
 		command_pool_info: VkCommandPoolCreateInfo;
-		command_pool_info.flags = .TRANSIENT_BIT;
+		command_pool_info.flags = .TRANSIENT_BIT | .RESET_COMMAND_BUFFER_BIT ;
 		command_pool_info.queueFamilyIndex = queue.family_index;
 		vk_assert(vkCreateCommandPool(device, *command_pool_info, null, *queue.pool));
 		
@@ -67,7 +67,7 @@ gpu_create_queue :: (kind: Queue_Family.Kind) -> Queue {
 				it.used += 1;
 			
 				command_pool_info: VkCommandPoolCreateInfo;
-				command_pool_info.flags = .TRANSIENT_BIT;
+				command_pool_info.flags = .TRANSIENT_BIT  | .RESET_COMMAND_BUFFER_BIT;
 				command_pool_info.queueFamilyIndex = it.index;
 				vk_assert(vkCreateCommandPool(device, *command_pool_info, null, *queue.pool));
 			
@@ -101,6 +101,12 @@ gpu_start_command_recording :: (queue: *Queue) -> Command_Buffer{
 	vk_assert(vkBeginCommandBuffer(command_buffer, *info));
 	
 	return command_buffer;
+}
+
+gpu_start_command_recording :: (queue: *Queue, command_buffer: Command_Buffer) {
+	info: VkCommandBufferBeginInfo;
+    info.flags = .ONE_TIME_SUBMIT_BIT;
+	vk_assert(vkBeginCommandBuffer(command_buffer, *info));
 }
 
 gpu_end_command_recording :: (buffer: Command_Buffer){
@@ -322,7 +328,7 @@ gpu_present :: (buffer: Command_Buffer, queue: *Queue, image: *Texture, width: s
 }
 
 	
-gpu_submit :: (queue: *Queue, semaphore: Semaphore, value: u64, buffers: ..Command_Buffer) {
+gpu_submit :: (queue: *Queue, semaphore: Semaphore, value: u64, buffers: ..Command_Buffer, free_buffers := true) {
 	if !buffers.count return;
 	buffer_info := array_new(buffers.count, VkCommandBufferSubmitInfo);
 	for * buffer_info{
@@ -371,7 +377,7 @@ gpu_submit :: (queue: *Queue, semaphore: Semaphore, value: u64, buffers: ..Comma
 		queue.present = false;
 	}
 	
-	if !queue.alive_buffer{
+	if !queue.alive_buffer && free_buffers{
 		vkQueueWaitIdle(queue);
 		//TODO bulk resett the pool
 		buffer_handles := array_new(buffers.count, VkCommandBuffer);
@@ -382,7 +388,7 @@ gpu_submit :: (queue: *Queue, semaphore: Semaphore, value: u64, buffers: ..Comma
 	}
 }
 
-gpu_submit :: (queue: *Queue, buffers: ..Command_Buffer) {
+gpu_submit :: (queue: *Queue, buffers: ..Command_Buffer, free_buffers := true) {
 	if !buffers.count return;
 
 	buffer_info := array_new(buffers.count, VkCommandBufferSubmitInfo);
@@ -411,7 +417,7 @@ gpu_submit :: (queue: *Queue, buffers: ..Command_Buffer) {
 		queue.present = false;
 	}
 	
-	if !queue.alive_buffer{
+	if !queue.alive_buffer && free_buffers{
 		vkQueueWaitIdle(queue);
 		//TODO bulk resett the pool
 		buffer_handles := array_new(buffers.count, VkCommandBuffer);

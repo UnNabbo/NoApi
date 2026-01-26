@@ -369,6 +369,7 @@ gpu_host_to_device_address :: (ptr: *void) -> *void{
 		add(*device.allocator.gpu, xx address, cast(u64, address) + allocation.size, allocation);
 		allocation.mapped = true;
 	}
+	
 	return xx (address + offset);
 }
 
@@ -473,6 +474,16 @@ gpu_create_texture_view_descriptor :: (ptr: *Texture_Descriptor, index: u64, tex
 	vkGetDescriptorEXT(device, *get_info, physical_device.proprieties.combinedImageSamplerDescriptorSize, xx (cast(*u8, ptr) + index * physical_device.proprieties.combinedImageSamplerDescriptorSize));
 
 	//vkDestroySampler(device, sampler, null);
+}
+
+gpu_destroy_texture_view_descriptor :: (ptr: *Texture_Descriptor, index: u64) {
+	metadata := get_cpu_metadata(ptr);
+	
+	sampler := *cast(*VkSampler, metadata.additional_data)[index];
+	if sampler.* != VK_NULL_HANDLE {
+		vkDestroySampler(device, sampler.*, null);
+		sampler.* = VK_NULL_HANDLE;
+	}
 }
 
 gpu_create_rw_texture_view_descriptor :: (ptr: *RWTexture_Descriptor, index: u64, texture: Texture){
