@@ -27,7 +27,17 @@ create_swapchain :: (surface: Surface, width:s32, height: s32, present_mode: Swa
 	swapchain: Swapchain;
 
 	swapchain.surface_format = .{.R8G8B8A8_UNORM, .COLOR_SPACE_SRGB_NONLINEAR_KHR};
-	swapchain.present_mode = xx present_mode;
+	swapchain.present_mode = .FIFO;
+	for surface.present_modes{
+		if it == .IMMEDIATE_KHR && present_mode == .MAILBOX{
+			swapchain.present_mode = xx .IMMEDIATE;
+		}
+		
+		if it == xx present_mode {
+			swapchain.present_mode = present_mode;
+			break;
+		}
+	}
 	swapchain.extent = .{xx width, xx height};
 
 	image_count := ifx (!surface.capabilities.maxImageCount) then surface.capabilities.minImageCount + 1 else clamp_hi(surface.capabilities.minImageCount + 1, surface.capabilities.maxImageCount);
@@ -46,7 +56,7 @@ create_swapchain :: (surface: Surface, width:s32, height: s32, present_mode: Swa
 	swapchain_create_info.pQueueFamilyIndices = null;
 	swapchain_create_info.preTransform = surface.capabilities.currentTransform;
 	swapchain_create_info.compositeAlpha = .OPAQUE_BIT_KHR;
-	swapchain_create_info.presentMode = xx present_mode; 
+	swapchain_create_info.presentMode = xx swapchain.present_mode; 
 	swapchain_create_info.clipped = VK_TRUE;
 	swapchain_create_info.oldSwapchain = old_handle;
 

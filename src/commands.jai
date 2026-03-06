@@ -51,7 +51,7 @@ gpu_create_queue :: (kind: Queue_Family.Kind) -> Queue {
 		queue.kind = kind;
 		
 		command_pool_info: VkCommandPoolCreateInfo;
-		command_pool_info.flags = .TRANSIENT_BIT;
+		command_pool_info.flags = .TRANSIENT_BIT | .RESET_COMMAND_BUFFER_BIT ;
 		command_pool_info.queueFamilyIndex = queue.family_index;
 		vk_assert(vkCreateCommandPool(device, *command_pool_info, null, *queue.pool));
 		
@@ -67,7 +67,7 @@ gpu_create_queue :: (kind: Queue_Family.Kind) -> Queue {
 				it.used += 1;
 			
 				command_pool_info: VkCommandPoolCreateInfo;
-				command_pool_info.flags = .TRANSIENT_BIT;
+				command_pool_info.flags = .TRANSIENT_BIT  | .RESET_COMMAND_BUFFER_BIT;
 				command_pool_info.queueFamilyIndex = it.index;
 				vk_assert(vkCreateCommandPool(device, *command_pool_info, null, *queue.pool));
 			
@@ -103,6 +103,12 @@ gpu_start_command_recording :: (queue: *Queue) -> Command_Buffer{
 	return command_buffer;
 }
 
+gpu_start_command_recording :: (queue: *Queue, command_buffer: Command_Buffer) {
+	info: VkCommandBufferBeginInfo;
+    info.flags = .ONE_TIME_SUBMIT_BIT;
+	vk_assert(vkBeginCommandBuffer(command_buffer, *info));
+}
+
 gpu_end_command_recording :: (buffer: Command_Buffer){
 	vk_assert(vkEndCommandBuffer(buffer));
 }
@@ -112,18 +118,18 @@ gpu_scoped_render_pass :: (buffer: Command_Buffer, render_pass: Render_Pass_Desc
 	`defer gpu_end_render_pass(buffer);
 }
 
-gpu_begin_render_pass :: (buffer: Command_Buffer, render_pass: Render_Pass_Descriptor) {
+gpu_begin_render_pass :: (buffer: Command_Buffer, render_pass: Render_Pass_Descriptor, width_extent: u32 = 0, height_extent: u32 = 0) {
 	render_info: VkRenderingInfo;
 
-	width, height: u32;
+	width, height := width_extent, height_extent;
 	assert(render_pass.color_targets.count != 0, "Cannot begin a render pass without a single color target"); //NOTE: i dont' think there will ever be a case where you start a render pass without a color targer
 	
     render_info.layerCount = 1;
 	attachments := array_new(render_pass.color_targets.count, VkRenderingAttachmentInfo,, temp);
 	for * render_pass.color_targets{
 		assert(it.texture != null, "Attachment texture cannot be null");
-		width = max(width, it.texture.extent.width);
-		height = max(height, it.texture.extent.height);
+		if !width then width = max(width, it.texture.extent.width);
+		if !height then height = max(height, it.texture.extent.height);
 		if it.texture.layout == .UNDEFINED then transition_image_layout(buffer, it.texture, .GENERAL);
 		attachments[it_index] = to_vk_attachment(it);
 	}
@@ -155,8 +161,9 @@ gpu_draw_indexed :: (buffer: Command_Buffer, vertex_data: *void, pixel_data: *vo
 
 	allocation := get_cpu_metadata(indices);
 	offset := cast(u64, indices) - allocation.base;
-	vkCmdBindIndexBuffer(buffer, allocation.buffer, 0, ifx T == u32 then .UINT32 else .UINT16);
-	vkCmdDrawIndexed(buffer, xx index_count, xx instance_count, xx offset, 0, 0);
+	//log("%: %", T, offset);
+	vkCmdBindIndexBuffer(buffer, allocation.buffer, offset, ifx T == u32 then .UINT32 else .UINT16);
+	vkCmdDrawIndexed(buffer, xx index_count, xx instance_count, 0, 0, 0);
 }
 
 gpu_draw_indexed_indirect :: (buffer: Command_Buffer, vertex_data: *void, pixel_data: *void, arguments: *void, draw_count: s64 = 1) {
@@ -173,7 +180,7 @@ gpu_draw_indexed_indirect :: (buffer: Command_Buffer, vertex_data: *void, pixel_
 	vkCmdDrawIndexedIndirect(buffer, allocation.buffer, 0, xx draw_count, size_of(VkDrawIndexedIndirectCommand));
 }
 
-gpu_dispatch :: (buffer: Command_Buffer, ptr: *void, x: u32, y: u32, z: u32) {
+gpu_dispatch :: (buffer: Command_Buffer, ptr: *void, x: u32, y: u32, z: u32 = 1) {
 	if ptr{
 		device_address := cast(VkDeviceAddress, ptr);
 		vkCmdPushConstants(buffer, buffer.current_pipeline.layout, .COMPUTE_BIT, 0, size_of(VkDeviceAddress), *device_address);
@@ -205,6 +212,16 @@ gpu_clear :: (buffer: Command_Buffer, image: *Texture,  color: [4] f32){
 	transition_image_layout(buffer, image, ifx layout == .UNDEFINED then .GENERAL else layout);
 }
 
+gpu_clear :: (buffer: Command_Buffer, image: *Texture,  value: f32){
+	layout := image.layout;
+	transition_image_layout(buffer, image, .TRANSFER_DST_OPTIMAL);
+	clear_range := create_subresource_range(xx VkImageAspectFlagBits.DEPTH_BIT);
+	clear_value: VkClearDepthStencilValue  = .{value, 0};
+	vkCmdClearDepthStencilImage(buffer, image, xx image.layout, *clear_value, 1, *clear_range);
+	transition_image_layout(buffer, image, ifx layout == .UNDEFINED then .GENERAL else layout);
+}
+
+
 gpu_copy_to_texture :: (buffer: Command_Buffer, texture: *Texture, data: *void) {
 	allocation := get_cpu_metadata(data);
 	offset := cast(u64, data) - allocation.base;
@@ -221,7 +238,8 @@ gpu_copy_to_texture :: (buffer: Command_Buffer, texture: *Texture, data: *void) 
 	vkCmdCopyBufferToImage(buffer, allocation.buffer, texture, xx texture.layout, 1,  *copy_region);
 }
 
-gpu_blit_textures :: (buffer: Command_Buffer, source: *Texture, destination: *Texture) {
+
+gpu_blit_textures :: (buffer: Command_Buffer, source: *Texture, source_width: s32, source_height: s32, destination: *Texture, destination_width: s32, destination_height: s32) {
 	source_layout := source.layout;
 	destination_layout := destination.layout;
 	
@@ -229,11 +247,11 @@ gpu_blit_textures :: (buffer: Command_Buffer, source: *Texture, destination: *Te
 	transition_image_layout(buffer, destination, .TRANSFER_DST_OPTIMAL);
 	
 	blit_region: VkImageBlit2;
-	blit_region.srcOffsets[1].x = xx source.extent.width;
-	blit_region.srcOffsets[1].y = xx source.extent.height;
+	blit_region.srcOffsets[1].x = source_width;
+	blit_region.srcOffsets[1].y = source_height;
 	blit_region.srcOffsets[1].z = 1;
-	blit_region.dstOffsets[1].x = xx destination.extent.width;
-	blit_region.dstOffsets[1].y = xx destination.extent.height;
+	blit_region.dstOffsets[1].x = destination_width;
+	blit_region.dstOffsets[1].y = destination_height;
 	blit_region.dstOffsets[1].z = 1;
 	blit_region.srcSubresource.aspectMask = .COLOR_BIT;
 	blit_region.srcSubresource.baseArrayLayer = 0;
@@ -257,6 +275,14 @@ gpu_blit_textures :: (buffer: Command_Buffer, source: *Texture, destination: *Te
  	
 	if source_layout != .UNDEFINED then transition_image_layout(buffer, source, source_layout);
 	if destination_layout != .UNDEFINED then transition_image_layout(buffer, destination, destination_layout);
+}
+
+gpu_blit_textures :: (buffer: Command_Buffer, source: *Texture, source_width: s32, source_height: s32, destination: *Texture) {
+	gpu_blit_textures(buffer, source, source_width, source_height, destination, xx destination.extent.width, xx destination.extent.height);
+}
+
+gpu_blit_textures :: (buffer: Command_Buffer, source: *Texture, destination: *Texture) {
+	gpu_blit_textures(buffer, source, xx source.extent.width, xx source.extent.height, destination, xx destination.extent.width, xx destination.extent.height);
 }
 
 gpu_set_depth_state :: ( buffer: Command_Buffer, using state: Depth_Stencil)
@@ -301,20 +327,21 @@ gpu_bind_texture_heap :: (buffer: Command_Buffer, sampling_ptr: *void, rw_ptr: *
 	vkCmdSetDescriptorBufferOffsetsEXT(buffer, xx buffer.current_pipeline.usage, buffer.current_pipeline.layout,xx ifx sampling_ptr then 0 else 1, xx ifx sampling_ptr && rw_ptr then 2 else 1, index.data, offset.data);
 }
 
-gpu_present :: (buffer: Command_Buffer, queue: *Queue, image: *Texture) -> s32{
+gpu_present :: (buffer: Command_Buffer, queue: *Queue, image: *Texture, width: s32 = 0, height: s32 = 0) -> s32{
 	queue.present = true;
 	swapchain.current_sync = xx ((swapchain.current_sync + 1) % (swapchain.semaphores.count ));
 	error := vkAcquireNextImageKHR(device, swapchain, U64_MAX, swapchain.semaphores[swapchain.current_sync], NULL_HANDLE, *swapchain.current_image);
 	if error != VkResult.VK_SUCCESS return 1;
-	gpu_blit_textures(buffer, image, *swapchain.images[swapchain.current_image]);
+	if !width || !height then gpu_blit_textures(buffer, image, *swapchain.images[swapchain.current_image]);
+	else gpu_blit_textures(buffer, image, width, height, *swapchain.images[swapchain.current_image]);
 	transition_image_layout(buffer, *swapchain.images[swapchain.current_image], .PRESENT_SRC);
 	return 0;
 }
 
 	
-gpu_submit :: (queue: *Queue, semaphore: Semaphore, value: u64, buffers: ..Command_Buffer) {
+gpu_submit :: (queue: *Queue, semaphore: Semaphore, value: u64, buffers: ..Command_Buffer, free_buffers := true) {
 	if !buffers.count return;
-	buffer_info := array_new(buffers.count, VkCommandBufferSubmitInfo);
+	buffer_info := array_new(buffers.count, VkCommandBufferSubmitInfo,, temp);
 	for * buffer_info{
 		queue.alive_buffer -= 1;
 		it.commandBuffer = buffers[it_index];
@@ -347,6 +374,8 @@ gpu_submit :: (queue: *Queue, semaphore: Semaphore, value: u64, buffers: ..Comma
 	vk_assert(vkQueueSubmit2(queue, 1, *submit2_info, VK_NULL_HANDLE));
 
 	if queue.present {
+		queue.present = false;
+		vkQueueWaitIdle(queue);
 		present_info: VkPresentInfoKHR;
 		present_info.pSwapchains = *swapchain.handle;
 		present_info.swapchainCount = 1;
@@ -358,13 +387,12 @@ gpu_submit :: (queue: *Queue, semaphore: Semaphore, value: u64, buffers: ..Comma
 		present_info.pImageIndices = *swapchain.current_image;
 
 		vkQueuePresentKHR(queue, *present_info);
-		queue.present = false;
 	}
 	
-	if !queue.alive_buffer{
+	if !queue.alive_buffer && free_buffers{
 		vkQueueWaitIdle(queue);
 		//TODO bulk resett the pool
-		buffer_handles := array_new(buffers.count, VkCommandBuffer);
+		buffer_handles := array_new(buffers.count, VkCommandBuffer,, temp);
 		for * buffer_handles{
 			it.* = buffers[it_index].handle;
 		}
@@ -372,10 +400,10 @@ gpu_submit :: (queue: *Queue, semaphore: Semaphore, value: u64, buffers: ..Comma
 	}
 }
 
-gpu_submit :: (queue: *Queue, buffers: ..Command_Buffer) {
+gpu_submit :: (queue: *Queue, buffers: ..Command_Buffer, free_buffers := true) {
 	if !buffers.count return;
 
-	buffer_info := array_new(buffers.count, VkCommandBufferSubmitInfo);
+	buffer_info := array_new(buffers.count, VkCommandBufferSubmitInfo,, temp);
 	for * buffer_info{
 		queue.alive_buffer -= 1;
 		it.commandBuffer = buffers[it_index];
@@ -401,17 +429,16 @@ gpu_submit :: (queue: *Queue, buffers: ..Command_Buffer) {
 		queue.present = false;
 	}
 	
-	if !queue.alive_buffer{
+	if !queue.alive_buffer && free_buffers{
 		vkQueueWaitIdle(queue);
 		//TODO bulk resett the pool
-		buffer_handles := array_new(buffers.count, VkCommandBuffer);
+		buffer_handles := array_new(buffers.count, VkCommandBuffer,, temp);
 		for * buffer_handles{
 			it.* = buffers[it_index].handle;
 		}
 		vkFreeCommandBuffers(device, queue.pool, xx buffer_handles.count, buffer_handles.data);
 	}
 }
-
 
 gpu_bind_viewport :: (buffer: Command_Buffer, x: f32, y: f32, width: f32, height: f32, near: f32 = 0, far: f32 = 1) {
 	view_port: VkViewport = .{x, y, width, height, near, far};
@@ -422,7 +449,6 @@ gpu_bind_scissor :: (buffer: Command_Buffer, x: s32, y: s32, width: u32, height:
 	scissor: VkRect2D = .{{x, y}, {width, height}};
 	vkCmdSetScissor(buffer, 0, 1, *scissor);
 }
-
 
 #scope_file;
 
@@ -436,8 +462,10 @@ create_subresource_range :: (mask: u64) -> VkImageSubresourceRange{
 	return subresource;
 }
 
-transition_image_layout :: (command_buffer: Command_Buffer, image: *Texture, target_layout: Texture.Layout){
+transition_image_layout :: (command_buffer: Command_Buffer, image: *Texture, target_layout: Texture.Layout, loc := #caller_location){
 	if image.layout == target_layout then return;
+
+	log("%: %", loc, target_layout);
 	
 	image_barrier: VkImageMemoryBarrier2;
     image_barrier.oldLayout = xx image.layout;
@@ -459,11 +487,11 @@ transition_image_layout :: (command_buffer: Command_Buffer, image: *Texture, tar
 			image_barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 			image_barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 			
-			image_barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;;
+			image_barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
 			image_barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
 	}
 	
-	aspect_mask := VkImageAspectFlagBits.COLOR_BIT;
+	aspect_mask := ifx image.format != .D32_SFLOAT then VkImageAspectFlagBits.COLOR_BIT else VkImageAspectFlagBits.DEPTH_BIT;
 	if target_layout == {
 		case .PRESENT_SRC;
 			image_barrier.srcAccessMask = xx 0;

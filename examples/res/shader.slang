@@ -20,8 +20,8 @@ struct VOut {
 [shader("vertex")]
 VOut v_main(uint vertex_index : SV_VertexID) {
 	VOut vout;
-	printf("%f", data[0].position.y);
-	printf("%u", vertex_index);
+	//printf("%f", data[0].position.y);
+	//printf("%u", vertex_index);
 	vout.position = float4(data[vertex_index].position, 1);
 	vout.uvs = data[vertex_index].uvs;
 	vout.col = data[vertex_index].col;
