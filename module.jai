@@ -33,26 +33,26 @@ gpu_init :: (texture_heap_size: s64, rwtexture_heap_size: s64, queues: ..Queue_R
 	}
 }
 
-gpu_create_swapchain :: (window: Window_Type, present_mode: Swap_Chain_Present_Mode) {
+gpu_create_swapchain :: (window: Window_Type, frame_in_flight: s32 = 3, present_mode: Swap_Chain_Present_Mode = .MAILBOX) {
 	width, height := get_window_size(window);
 	
 	window_handle = window;
 	surface = create_surface(window_handle);
-	swapchain = create_swapchain(surface, width, height, present_mode);
+	swapchain = create_swapchain(surface, width, height, frame_in_flight, present_mode);
 }
 
-gpu_create_swapchain :: (window: Window_Type, width:s32, height: s32, present_mode: Swap_Chain_Present_Mode) {
+gpu_create_swapchain :: (window: Window_Type, width:s32, height: s32, frame_in_flight: s32 = 3, present_mode: Swap_Chain_Present_Mode = .MAILBOX) {
 	window_handle = window;
 	surface = create_surface(window_handle);
-	swapchain = create_swapchain(surface, width, height, present_mode);
+	swapchain = create_swapchain(surface, width, height, frame_in_flight, present_mode);
 }
 
 gpu_resize_swapchain :: (width: s32, height: s32, present_mode: Swap_Chain_Present_Mode) {
 	vkDeviceWaitIdle(device);
-	//destroy_swapchain(*swapchain);
-	//destroy_surface(*surface);
+	destroy_swapchain(*swapchain);
+	destroy_surface(*surface);
 	surface = create_surface(window_handle);
-	swapchain = create_swapchain(surface, width, height, present_mode, swapchain);
+	swapchain = create_swapchain(surface, width, height, swapchain.images_in_flight, present_mode);
 }
 
 gpu_resize_swapchain :: (width: s32, height: s32) {

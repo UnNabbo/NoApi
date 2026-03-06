@@ -23,7 +23,7 @@ main :: (){
 	quit := false;
 
 	gpu_init(1, {.GENERAL, 1});
-	gpu_create_swapchain(window, 1280, 720, .FIFO);
+	gpu_create_swapchain(window, 1280, 720, 1, .FIFO);
 	queue := gpu_create_queue(.GENERAL);
 	
 	vertex_ir := gpu_create_shader(shader, "v_main");
@@ -66,8 +66,8 @@ main :: (){
 		render_pass: Render_Pass_Descriptor;
 		render_pass.color_targets = .[{*backbuffer, .CLEAR, .STORE, .[1, 0, 0, 1]}];
 		gpu_begin_render_pass(command_buffer, render_pass);
-		//gpu_bind_pipeline(*command_buffer, *pipeline);
-		//gpu_draw_indexed(command_buffer, gpu_host_to_device_address(vertex), null, indices, 3);
+		gpu_bind_pipeline(*command_buffer, *pipeline);
+		gpu_draw_indexed(command_buffer, gpu_host_to_device_address(vertex), null, indices, 3);
 		gpu_end_render_pass(command_buffer);
 	
 		if gpu_present(command_buffer, *queue, *backbuffer) then break;

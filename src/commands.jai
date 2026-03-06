@@ -130,13 +130,10 @@ gpu_begin_render_pass :: (buffer: Command_Buffer, render_pass: Render_Pass_Descr
 		assert(it.texture != null, "Attachment texture cannot be null");
 		if !width then width = max(width, it.texture.extent.width);
 		if !height then height = max(height, it.texture.extent.height);
-		if it.texture.layout == .UNDEFINED then transition_image_layout(buffer, it.texture, .GENERAL);
+		transition_image_layout(buffer, it.texture, .COLOR_ATTACHMENT_OPTIMAL);
 		attachments[it_index] = to_vk_attachment(it);
 	}
-
-	if render_pass.depth_target.texture{
-		if render_pass.depth_target.texture.layout == .UNDEFINED then transition_image_layout(buffer, render_pass.depth_target.texture, .DEPTH_ATTACHMENT_OPTIMAL);
-	}
+	if render_pass.depth_target.texture then transition_image_layout(buffer, render_pass.depth_target.texture, .DEPTH_ATTACHMENT_OPTIMAL);
 	
 	render_info.renderArea = VkRect2D.{ VkOffset2D.{ 0, 0 }, .{width, height} };
     render_info.colorAttachmentCount = xx render_pass.color_targets.count;
@@ -329,8 +326,8 @@ gpu_bind_texture_heap :: (buffer: Command_Buffer, sampling_ptr: *void, rw_ptr: *
 
 gpu_present :: (buffer: Command_Buffer, queue: *Queue, image: *Texture, width: s32 = 0, height: s32 = 0) -> s32{
 	queue.present = true;
-	swapchain.current_sync = xx ((swapchain.current_sync + 1) % (swapchain.semaphores.count ));
-	error := vkAcquireNextImageKHR(device, swapchain, U64_MAX, swapchain.semaphores[swapchain.current_sync], NULL_HANDLE, *swapchain.current_image);
+	swapchain.current_sync = xx ((swapchain.current_sync + 1) % (swapchain.image_semaphores.count ));
+	error := vkAcquireNextImageKHR(device, swapchain, U64_MAX, swapchain.image_semaphores[swapchain.current_sync], NULL_HANDLE, *swapchain.current_image);
 	if error != VkResult.VK_SUCCESS return 1;
 	if !width || !height then gpu_blit_textures(buffer, image, *swapchain.images[swapchain.current_image]);
 	else gpu_blit_textures(buffer, image, width, height, *swapchain.images[swapchain.current_image]);
@@ -349,23 +346,22 @@ gpu_submit :: (queue: *Queue, semaphore: Semaphore, value: u64, buffers: ..Comma
 	submit2_info: VkSubmitInfo2;
 
 
-#if false{
 	wait_semaphore_info: VkSemaphoreSubmitInfo;
-	wait_semaphore_info.semaphore = swapchain.semaphores[swapchain.current_sync];
+	wait_semaphore_info.semaphore = swapchain.image_semaphores[swapchain.current_sync];
 	wait_semaphore_info.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 	submit2_info.waitSemaphoreInfoCount = 1;
 	submit2_info.pWaitSemaphoreInfos = *wait_semaphore_info;
+	
+	signal_semaphore_info: [2] VkSemaphoreSubmitInfo;
+	signal_semaphore_info[0].semaphore = semaphore;
+	signal_semaphore_info[0].stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+	signal_semaphore_info[0].value = value;
 
-	render_semaphore := gpu_create_binary_semaphore();
-}
+	signal_semaphore_info[1].semaphore = swapchain.present_semaphores[swapchain.current_sync];
+	signal_semaphore_info[1].stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 	
-	signal_semaphore_info: VkSemaphoreSubmitInfo;
-	signal_semaphore_info.semaphore = semaphore;
-	signal_semaphore_info.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-	signal_semaphore_info.value = value;
-	
-	submit2_info.signalSemaphoreInfoCount = 1;
-	submit2_info.pSignalSemaphoreInfos = *signal_semaphore_info;
+	submit2_info.signalSemaphoreInfoCount = signal_semaphore_info.count;
+	submit2_info.pSignalSemaphoreInfos = signal_semaphore_info.data;
 	
     submit2_info.commandBufferInfoCount = xx buffer_info.count;
     submit2_info.pCommandBufferInfos = buffer_info.data;
@@ -375,17 +371,16 @@ gpu_submit :: (queue: *Queue, semaphore: Semaphore, value: u64, buffers: ..Comma
 
 	if queue.present {
 		queue.present = false;
-		vkQueueWaitIdle(queue);
 		present_info: VkPresentInfoKHR;
 		present_info.pSwapchains = *swapchain.handle;
 		present_info.swapchainCount = 1;
 
-		present_info.pWaitSemaphores = *swapchain.semaphores[swapchain.current_sync];
-		//present_info.pWaitSemaphores = *render_semaphore.handle;
+		present_info.pWaitSemaphores = *swapchain.present_semaphores[swapchain.current_sync];
 		present_info.waitSemaphoreCount = 1;
 
 		present_info.pImageIndices = *swapchain.current_image;
-
+		
+		gpu_wait_semaphore(semaphore, value); 
 		vkQueuePresentKHR(queue, *present_info);
 	}
 	
@@ -419,7 +414,7 @@ gpu_submit :: (queue: *Queue, buffers: ..Command_Buffer, free_buffers := true) {
 		present_info.pSwapchains = *swapchain.handle;
 		present_info.swapchainCount = 1;
 
-		present_info.pWaitSemaphores = *swapchain.semaphores[swapchain.current_sync];
+		present_info.pWaitSemaphores = *swapchain.image_semaphores[swapchain.current_sync];
 		//present_info.pWaitSemaphores = *render_semaphore.handle;
 		present_info.waitSemaphoreCount = 1;
 
@@ -465,44 +460,57 @@ create_subresource_range :: (mask: u64) -> VkImageSubresourceRange{
 transition_image_layout :: (command_buffer: Command_Buffer, image: *Texture, target_layout: Texture.Layout, loc := #caller_location){
 	if image.layout == target_layout then return;
 
-	log("%: %", loc, target_layout);
+	//log("%: %", loc, target_layout);
 	
 	image_barrier: VkImageMemoryBarrier2;
     image_barrier.oldLayout = xx image.layout;
     image_barrier.newLayout = xx target_layout;
 
+	aspect_mask := ifx image.format != .D32_SFLOAT then VkImageAspectFlagBits.COLOR_BIT else VkImageAspectFlagBits.DEPTH_BIT;
 	if image.layout == {
 		case .PRESENT_SRC;
-			image_barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-			image_barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-			
-			//image_barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+			image_barrier.srcStageMask  = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT; 
+			image_barrier.srcAccessMask = VK_ACCESS_2_NONE;
 		case .TRANSFER_SRC_OPTIMAL;
 			image_barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-			image_barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-
-			image_barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;;
-			image_barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
-		case;
+			image_barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+		case .TRANSFER_DST_OPTIMAL;
 			image_barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-			image_barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-			
 			image_barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-			image_barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+		case .UNDEFINED;
+			image_barrier.dstStageMask = VK_PIPELINE_STAGE_2_NONE;
+			image_barrier.dstAccessMask = VK_ACCESS_2_NONE;
+		case .COLOR_ATTACHMENT_OPTIMAL;
+			image_barrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+			image_barrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+		case .DEPTH_ATTACHMENT_OPTIMAL;
+			image_barrier.srcStageMask  = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+			image_barrier.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		case;
+			log("[WARNING] Source layout(%) is not supported", image.layout);
 	}
 	
-	aspect_mask := ifx image.format != .D32_SFLOAT then VkImageAspectFlagBits.COLOR_BIT else VkImageAspectFlagBits.DEPTH_BIT;
 	if target_layout == {
 		case .PRESENT_SRC;
-			image_barrier.srcAccessMask = xx 0;
-			image_barrier.dstAccessMask = xx 0;
-		case .DEPTH_ATTACHMENT_OPTIMAL;
-			image_barrier.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-			image_barrier.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-			aspect_mask = VkImageAspectFlagBits.DEPTH_BIT;
+			image_barrier.dstStageMask  = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+			image_barrier.dstAccessMask = VK_ACCESS_2_NONE;
 		case .TRANSFER_SRC_OPTIMAL;
-			image_barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+			image_barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 			image_barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+		case .TRANSFER_DST_OPTIMAL;
+			image_barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+			image_barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+		case .UNDEFINED;
+			image_barrier.dstStageMask = VK_PIPELINE_STAGE_2_NONE;
+			image_barrier.dstAccessMask = VK_ACCESS_2_NONE;
+		case .DEPTH_ATTACHMENT_OPTIMAL;
+			image_barrier.dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT ;
+			image_barrier.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;;
+		case .COLOR_ATTACHMENT_OPTIMAL;
+			image_barrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+			image_barrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+		case;
+			log("[WARNING] Destination layout(%) is not supported", target_layout);
 	}
 
 	

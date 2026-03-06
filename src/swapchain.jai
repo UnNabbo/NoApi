@@ -19,13 +19,16 @@ Swapchain :: struct{
 	present_mode: Swap_Chain_Present_Mode;
 	current_image: u32;
 
+	images_in_flight: s32;
 	current_sync: u32;
-	semaphores: [] Semaphore;
+	
+	image_semaphores: [] Semaphore;
+	present_semaphores: [] Semaphore;
 }
 
-create_swapchain :: (surface: Surface, width:s32, height: s32, present_mode: Swap_Chain_Present_Mode, old_handle: VkSwapchainKHR = VK_NULL_HANDLE) -> Swapchain {
+create_swapchain :: (surface: Surface, width:s32, height: s32, frame_in_flight: s32, present_mode: Swap_Chain_Present_Mode, old_handle: VkSwapchainKHR = VK_NULL_HANDLE) -> Swapchain {
 	swapchain: Swapchain;
-
+	swapchain.images_in_flight = frame_in_flight;
 	swapchain.surface_format = .{.R8G8B8A8_UNORM, .COLOR_SPACE_SRGB_NONLINEAR_KHR};
 	swapchain.present_mode = .FIFO;
 	for surface.present_modes{
@@ -63,12 +66,14 @@ create_swapchain :: (surface: Surface, width:s32, height: s32, present_mode: Swa
 	vk_assert(vkCreateSwapchainKHR(device.handle, *swapchain_create_info, null, *swapchain.handle));
 	
 	swapchain.images = array_new(image_count, Texture);
-	swapchain.semaphores = array_new(image_count, Semaphore);
 	raw_images := array_new(image_count, VkImage,, temp);
 	vkGetSwapchainImagesKHR(device.handle, swapchain.handle, *image_count, raw_images.data);
 
-	for * swapchain.semaphores{
-		it.* = gpu_create_binary_semaphore();
+	swapchain.image_semaphores = array_new(swapchain.images_in_flight, Semaphore);
+	swapchain.present_semaphores = array_new(swapchain.images_in_flight, Semaphore);
+	for 0..swapchain.images_in_flight - 1{
+		swapchain.image_semaphores[it] = gpu_create_binary_semaphore();
+		swapchain.present_semaphores[it] = gpu_create_binary_semaphore();
 	}
 	
 	for raw_images{
@@ -84,6 +89,14 @@ destroy_swapchain :: (swapchain: *Swapchain){
 	vkDeviceWaitIdle(device);
 	vkDestroySwapchainKHR(device, swapchain, null);
 	array_free(swapchain.images);
+
+	//TODO: this is garbage, there is no reason to recreate the semaphore
+	for 0..swapchain.images_in_flight - 1{
+		gpu_destroy_semaphore(swapchain.image_semaphores[it]);
+		gpu_destroy_semaphore(swapchain.present_semaphores[it]);
+	}
+	array_free(swapchain.image_semaphores);
+	array_free(swapchain.present_semaphores);
 }
 
 Surface :: struct {
