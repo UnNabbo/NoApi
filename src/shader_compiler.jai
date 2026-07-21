@@ -1,4 +1,4 @@
-gpu_compile_shader :: (path: string, debug := SHADER_DEBUG, is_file := true, search_path := "", output := "") -> bool, string {
+gpu_compile_shader :: (path: string, debug := RENDERING_DEBUG, is_file := true, search_path := "") -> bool, string {
 	if !slang_global_session then Slang.slang_createGlobalSession(Slang.SLANG_API_VERSION, *slang_global_session);
 	
 	print_diagnostic_blob :: (blob: *Slang.IBlob) {
@@ -90,10 +90,8 @@ gpu_compile_shader :: (path: string, debug := SHADER_DEBUG, is_file := true, sea
     spirv_code_raw.data = alloc(size_of(u8) * spirv_code_raw.count);
     memcpy(spirv_code_raw.data, Slang.ISlangBlob_getBufferPointer(spirv_code), spirv_code_raw.count);
 
-	if output{
-		output_path := tprint("%/%.spv", output, path_strip_extension(path));
-		write_entire_file(output_path, spirv_code_raw.data, spirv_code_raw.count);
-	}
+	output_path := tprint("%_val.spv", actual_path);
+    write_entire_file(output_path, spirv_code_raw.data, spirv_code_raw.count);
 	
     Slang.ISlangUnknown_release(spirv_code);
 

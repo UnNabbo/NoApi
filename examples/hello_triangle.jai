@@ -23,7 +23,7 @@ main :: (){
 	quit := false;
 
 	gpu_init(1, {.GENERAL, 1});
-	gpu_create_swapchain(window, 1280, 720, 1, .FIFO);
+	gpu_create_swapchain(window, 1280, 720, .FIFO);
 	queue := gpu_create_queue(.GENERAL);
 	
 	vertex_ir := gpu_create_shader(shader, "v_main");
@@ -46,33 +46,25 @@ main :: (){
 	indices[0] = 0;
 	indices[1] = 1;
 	indices[2] = 2;
-
-	FRAMES_IN_FLIGHT :: 1;
-	frame_semaphore := gpu_create_semaphore();
-	frame: u64 = 1;
 	
 	while !quit {
         update_window_events();
 		for get_window_resizes() {
             gpu_resize_swapchain(it.width, it.height);
 		}
-
-		
-		if frame > FRAMES_IN_FLIGHT then gpu_wait_semaphore(frame_semaphore, frame); 
-		defer frame += 1;
 		
 		command_buffer := gpu_start_command_recording(*queue);
-		
 		render_pass: Render_Pass_Descriptor;
 		render_pass.color_targets = .[{*backbuffer, .CLEAR, .STORE, .[1, 0, 0, 1]}];
 		gpu_begin_render_pass(command_buffer, render_pass);
 		gpu_bind_pipeline(*command_buffer, *pipeline);
+
 		gpu_draw_indexed(command_buffer, gpu_host_to_device_address(vertex), null, indices, 3);
 		gpu_end_render_pass(command_buffer);
 	
 		if gpu_present(command_buffer, *queue, *backbuffer) then break;
 		gpu_end_command_recording(command_buffer);
 		
-		gpu_submit(*queue, frame_semaphore, frame + 1, command_buffer);
+		gpu_submit(*queue, command_buffer);
     }
 }

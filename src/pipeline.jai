@@ -219,7 +219,6 @@ gpu_create_graphic_pipeline :: (vertex: Shader_IR, fragment: Shader_IR, rasteriz
 
 	layout: VkPipelineLayoutCreateInfo;
 	texture_layout := create_texture_heap_descriptor_set_layout();
-	defer array_free(texture_layout);
 	layout.pSetLayouts = texture_layout.data;
 	layout.setLayoutCount = xx texture_layout.count;
 	
@@ -243,7 +242,7 @@ gpu_create_graphic_pipeline :: (vertex: Shader_IR, fragment: Shader_IR, rasteriz
 	color_blending: VkPipelineColorBlendStateCreateInfo;
 	color_blending.logicOpEnable = VK_FALSE;
 	color_blending.logicOp = .COPY;
-	battachment := array_new(attachments.count, VkPipelineColorBlendAttachmentState,, temp);
+	battachment := array_new(attachments.count, VkPipelineColorBlendAttachmentState);
 	for 0..attachments.count - 1{
 		battachment[it] = color_blend_attachment;
 	}
@@ -306,7 +305,6 @@ gpu_create_compute_pipeline :: (ir: Shader_IR) -> Pipeline{
 	compute_layout.pushConstantRangeCount = 1;
 	
 	texture_layout := create_texture_heap_descriptor_set_layout();
-	defer array_free(texture_layout);
 	compute_layout.pSetLayouts = texture_layout.data;
 	compute_layout.setLayoutCount = 2;
 	
@@ -341,9 +339,8 @@ gpu_create_shader :: (data: string, entry_point: string = "main", constants: ..A
     create_info.pCode = xx data.data;
 
 	specialization_info: VkSpecializationInfo;
-	constants_memory : *u8;
+	data_size : u32 = 0;
 	if constants.count{
-		data_size : u32 = 0;
 		ir.constants_map = array_new(constants.count, VkSpecializationMapEntry);
 		for constants{
 			ir.constants_map[it_index].constantID = xx it_index;
@@ -354,16 +351,15 @@ gpu_create_shader :: (data: string, entry_point: string = "main", constants: ..A
 		
 		specialization_info.pMapEntries = ir.constants_map.data;
 		specialization_info.mapEntryCount = xx ir.constants_map.count;
-	
-		offset := 0;
-		constants_memory = alloc(data_size);
-		for constants{
-			memcpy(constants_memory + offset, it.value_pointer, it.type.runtime_size);
-			offset += it.type.runtime_size;
-		}
-		specialization_info.dataSize = data_size;
-		specialization_info.pData = constants_memory;
 	}
+	constants_memory : *u8 = alloc(data_size);
+	offset := 0;
+	for constants{
+		memcpy(constants_memory + offset, it.value_pointer, it.type.runtime_size);
+		offset += it.type.runtime_size;
+	}
+	specialization_info.dataSize = data_size;
+	specialization_info.pData = constants_memory;
 	
 	ir.entry_point = to_c_string(entry_point);
 	ir.constants = specialization_info;
@@ -375,6 +371,7 @@ gpu_create_shader :: (data: string, entry_point: string = "main", constants: ..A
 
 create_texture_heap_descriptor_set_layout :: () -> []VkDescriptorSetLayout{
 	layout: = array_new(2, VkDescriptorSetLayout);
+	
 	{
 		layout_binding: VkDescriptorSetLayoutBinding;
 		layout_binding.binding = 0;

@@ -19,28 +19,15 @@ Swapchain :: struct{
 	present_mode: Swap_Chain_Present_Mode;
 	current_image: u32;
 
-	images_in_flight: s32;
 	current_sync: u32;
-	
-	image_semaphores: [] Semaphore;
-	present_semaphores: [] Semaphore;
+	semaphores: [] Semaphore;
 }
 
-create_swapchain :: (surface: Surface, width:s32, height: s32, frame_in_flight: s32, present_mode: Swap_Chain_Present_Mode, old_handle: VkSwapchainKHR = VK_NULL_HANDLE) -> Swapchain {
+create_swapchain :: (surface: Surface, width:s32, height: s32, present_mode: Swap_Chain_Present_Mode, old_handle: VkSwapchainKHR = VK_NULL_HANDLE) -> Swapchain {
 	swapchain: Swapchain;
-	swapchain.images_in_flight = frame_in_flight;
+
 	swapchain.surface_format = .{.R8G8B8A8_UNORM, .COLOR_SPACE_SRGB_NONLINEAR_KHR};
-	swapchain.present_mode = .FIFO;
-	for surface.present_modes{
-		if it == .IMMEDIATE_KHR && present_mode == .MAILBOX{
-			swapchain.present_mode = xx .IMMEDIATE;
-		}
-		
-		if it == xx present_mode {
-			swapchain.present_mode = present_mode;
-			break;
-		}
-	}
+	swapchain.present_mode = xx present_mode;
 	swapchain.extent = .{xx width, xx height};
 
 	image_count := ifx (!surface.capabilities.maxImageCount) then surface.capabilities.minImageCount + 1 else clamp_hi(surface.capabilities.minImageCount + 1, surface.capabilities.maxImageCount);
@@ -59,21 +46,19 @@ create_swapchain :: (surface: Surface, width:s32, height: s32, frame_in_flight: 
 	swapchain_create_info.pQueueFamilyIndices = null;
 	swapchain_create_info.preTransform = surface.capabilities.currentTransform;
 	swapchain_create_info.compositeAlpha = .OPAQUE_BIT_KHR;
-	swapchain_create_info.presentMode = xx swapchain.present_mode; 
+	swapchain_create_info.presentMode = xx present_mode; 
 	swapchain_create_info.clipped = VK_TRUE;
 	swapchain_create_info.oldSwapchain = old_handle;
 
 	vk_assert(vkCreateSwapchainKHR(device.handle, *swapchain_create_info, null, *swapchain.handle));
 	
 	swapchain.images = array_new(image_count, Texture);
+	swapchain.semaphores = array_new(image_count, Semaphore);
 	raw_images := array_new(image_count, VkImage,, temp);
 	vkGetSwapchainImagesKHR(device.handle, swapchain.handle, *image_count, raw_images.data);
 
-	swapchain.image_semaphores = array_new(swapchain.images_in_flight, Semaphore);
-	swapchain.present_semaphores = array_new(swapchain.images_in_flight, Semaphore);
-	for 0..swapchain.images_in_flight - 1{
-		swapchain.image_semaphores[it] = gpu_create_binary_semaphore();
-		swapchain.present_semaphores[it] = gpu_create_binary_semaphore();
+	for * swapchain.semaphores{
+		it.* = gpu_create_binary_semaphore();
 	}
 	
 	for raw_images{
@@ -89,14 +74,6 @@ destroy_swapchain :: (swapchain: *Swapchain){
 	vkDeviceWaitIdle(device);
 	vkDestroySwapchainKHR(device, swapchain, null);
 	array_free(swapchain.images);
-
-	//TODO: this is garbage, there is no reason to recreate the semaphore
-	for 0..swapchain.images_in_flight - 1{
-		gpu_destroy_semaphore(swapchain.image_semaphores[it]);
-		gpu_destroy_semaphore(swapchain.present_semaphores[it]);
-	}
-	array_free(swapchain.image_semaphores);
-	array_free(swapchain.present_semaphores);
 }
 
 Surface :: struct {

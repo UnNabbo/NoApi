@@ -75,7 +75,6 @@ gpu_barrier :: (buffer: Command_Buffer, before: Stage, after: Stage, hazards: Ha
 	
     memory_barrier.dstAccessMask = xx hazards;
 	if is_shader_stage(after) then memory_barrier.dstAccessMask |= VK_ACCESS_2_SHADER_READ_BIT;
-	if before == .COMPUTE_SHADER then memory_barrier.dstAccessMask |= VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_READ_BIT;
     memory_barrier.dstStageMask  = xx after;
 
 	

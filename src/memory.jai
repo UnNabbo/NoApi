@@ -279,9 +279,8 @@ Texture_Info :: struct{
 }
 
 gpu_malloc :: (size: s64, alignment: s64 = 16, kind: Memory_Kind = .DEFAULT, loc := #caller_location) -> *void {
-	//log("%", loc);
 	if size == 0 {
-		#if VALIDATION_LAYERS then log("[Memory][Warn] Trying to allocate memory with size 0");
+		#if RENDERING_DEBUG then log("[Memory][Warn] Trying to allocate memory with size 0");
 		return null;
 	}
 	
@@ -321,9 +320,8 @@ gpu_malloc :: (size: s64, alignment: s64 = 16, kind: Memory_Kind = .DEFAULT, loc
 	}else{
 		ptr = allocation.info.pMappedData;
 		assert(ptr != null, "Allocated pointer is null");
-
+		
 		allocation.base = cast(u64, ptr);
-
 		add(*device.allocator.cpu, allocation.base, allocation.base + allocation.size, allocation);
 		memset(ptr, 0, xx allocation.size);
 	}
@@ -354,10 +352,10 @@ gpu_malloc :: (array: []$type, kind: Memory_Kind = .DEFAULT, loc := #caller_loca
 }
 
 gpu_free :: (ptr: *void, loc := #caller_location){
-	allocation := get_cpu_metadata(ptr);
+	allocation, node := get_cpu_metadata(ptr);
 	memory_stats.used -= allocation.size;
 	vmaDestroyBuffer(device.allocator,xx allocation.buffer, allocation);
-	delete(*device.allocator.cpu, allocation.base, allocation.base + allocation.size);
+	delete_node(*device.allocator.cpu, node);
 }
 
 gpu_host_to_device_address :: (ptr: *void) -> *void{
@@ -370,10 +368,8 @@ gpu_host_to_device_address :: (ptr: *void) -> *void{
 		add(*device.allocator.gpu, xx address, cast(u64, address) + allocation.size, allocation);
 		allocation.mapped = true;
 	}
-	
 	return xx (address + offset);
 }
-
 
 gpu_create_texture :: (using info: Texture_Info, kind: Memory_Kind = .GPU) ->  Texture{
 	texture: Texture;
@@ -415,13 +411,10 @@ gpu_create_texture :: (using info: Texture_Info, kind: Memory_Kind = .GPU) ->  T
 	if texture.usage & .DEPTH_STENCIL_ATTACHMENT then view_info.subresourceRange.aspectMask = .DEPTH_BIT;
 	else view_info.subresourceRange.aspectMask = .COLOR_BIT;
 
+
 	vk_assert(vkCreateImageView(device, *view_info, null, *texture.view));
-
+	
 	return texture;
-}
-
-gpu_create_texture :: (width: u32, height: u32, format: Texture.Format = .R8G8B8A8_UNORM, usage: Texture.Usage = .SAMPLED | .TRANSFER_DST | .TRANSFER_SRC, kind: Memory_Kind = .GPU) ->  Texture{
-	return gpu_create_texture({width, height, format, usage}, kind);
 }
 
 gpu_destroy_texture :: (texture: *Texture){
@@ -432,6 +425,8 @@ gpu_destroy_texture :: (texture: *Texture){
 
 gpu_create_texture_heap :: () -> *Texture_Descriptor{
 	data := gpu_malloc(texture_heap_size, Texture_Descriptor, .DESCRIPTORS);
+	metadata := get_cpu_metadata(data);
+	metadata.additional_data = get(*device.allocator.metadata, texture_heap_size * size_of(VkSampler));
 	return data;
 }
 
@@ -439,17 +434,9 @@ gpu_create_rw_texture_heap :: () -> *RWTexture_Descriptor{
 	return gpu_malloc(rwtexture_heap_size, RWTexture_Descriptor, .DESCRIPTORS);
 }
 
-Sampling_Method :: enum {
-    NEAREST   :: 0;
-    LINEAR    :: 1;
-    CUBIC_EXT :: 1000015000;
-    CUBIC_IMG :: 1000015000;
-}
-
-gpu_create_texture_view_descriptor :: (ptr: *Texture_Descriptor, index: u64, texture: Texture, sampling: Sampling_Method = .NEAREST){
+gpu_create_texture_view_descriptor :: (ptr: *Texture_Descriptor, index: u64, texture: Texture){
 	metadata := get_cpu_metadata(ptr);
-	if !metadata.additional_data then metadata.additional_data = get(*device.allocator.metadata, texture_heap_size * size_of(VkSampler));
-	
+
 	get_info: VkDescriptorGetInfoEXT;
 	get_info.type = .COMBINED_IMAGE_SAMPLER;
 
@@ -459,9 +446,8 @@ gpu_create_texture_view_descriptor :: (ptr: *Texture_Descriptor, index: u64, tex
 		sampler.* = VK_NULL_HANDLE;
 	}
 	sampler_info: VkSamplerCreateInfo ;
-	sampler_info.magFilter = xx sampling;
-	sampler_info.minFilter = xx sampling;
-
+	sampler_info.magFilter = .LINEAR;
+	sampler_info.minFilter = .LINEAR;
 	//sampler_info.addressModeU = .MIRRORED_REPEAT;
 	//sampler_info.addressModeV = .MIRRORED_REPEAT;
 	//sampler_info.addressModeW = .MIRRORED_REPEAT;
@@ -477,16 +463,6 @@ gpu_create_texture_view_descriptor :: (ptr: *Texture_Descriptor, index: u64, tex
 	vkGetDescriptorEXT(device, *get_info, physical_device.proprieties.combinedImageSamplerDescriptorSize, xx (cast(*u8, ptr) + index * physical_device.proprieties.combinedImageSamplerDescriptorSize));
 
 	//vkDestroySampler(device, sampler, null);
-}
-
-gpu_destroy_texture_view_descriptor :: (ptr: *Texture_Descriptor, index: u64) {
-	metadata := get_cpu_metadata(ptr);
-	
-	sampler := *cast(*VkSampler, metadata.additional_data)[index];
-	if sampler.* != VK_NULL_HANDLE {
-		vkDestroySampler(device, sampler.*, null);
-		sampler.* = VK_NULL_HANDLE;
-	}
 }
 
 gpu_create_rw_texture_view_descriptor :: (ptr: *RWTexture_Descriptor, index: u64, texture: Texture){
@@ -515,6 +491,7 @@ GPU_Allocation :: struct {
 	size: u64;
 
 	buffer: VkBuffer;
+	
 	additional_data: *void;
 }
 
@@ -525,10 +502,10 @@ GPU_Allocator :: struct{
 	metadata: Flat_Pool;
 }
 
-get_cpu_metadata :: (ptr: *void) -> *GPU_Allocation{
-	found, metadata := find(*device.allocator.cpu, xx ptr);
+get_cpu_metadata :: (ptr: *void) -> *GPU_Allocation, *void{
+	found, metadata, node := find(*device.allocator.cpu, xx ptr);
 	assert(found, "Could not locate pointer(%) to mapped memory", ptr);
-	return metadata;
+	return metadata, node;
 }
 
 get_gpu_metadata :: (ptr: *void) -> *GPU_Allocation{

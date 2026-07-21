@@ -36,7 +36,7 @@ main :: (){
 	
 	gpu_init(32, {.GENERAL, 1});
 	//gpu_create_swapchain(window, 1280, 720, .MAILBOX);
-	gpu_create_swapchain(window, 1280, 720, 1, .FIFO);
+	gpu_create_swapchain(window, 1280, 720, .FIFO);
 	compute_queue := gpu_create_queue(.GENERAL);
 
 	compute_ir := gpu_create_shader_from_ir("res/compute.spv");

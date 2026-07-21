@@ -1,4 +1,4 @@
-#module_parameters(VALIDATION_LAYERS := true, SHADER_DEBUG := true, IMPORT_SLANG_COMPILER := true);
+#module_parameters(IMPORT_SLANG_COMPILER := true, RENDERING_DEBUG := true);
 
 #load "src/utils.jai";
 #load "src/init.jai";
@@ -26,37 +26,25 @@ gpu_init :: (texture_heap_size: s64, rwtexture_heap_size: s64, queues: ..Queue_R
 	gpu_context.rwtexture_heap_size = rwtexture_heap_size;
 
 	
-	#if false{
-		layout := create_texture_heap_descriptor_set_layout();
-		global_pipeline_layout.pSetLayouts = texture_layout.data;
-		global_pipeline_layout.setLayoutCount = xx texture_layout.count;
-	}
+#if false{
+	layout := create_texture_heap_descriptor_set_layout();
+	global_pipeline_layout.pSetLayouts = texture_layout.data;
+	global_pipeline_layout.setLayoutCount = xx texture_layout.count;
+}
 }
 
-gpu_create_swapchain :: (window: Window_Type, frame_in_flight: s32 = 3, present_mode: Swap_Chain_Present_Mode = .MAILBOX) {
-	width, height := get_window_size(window);
-	
+gpu_create_swapchain :: (window: Window_Type, width:s32, height: s32, present_mode: Swap_Chain_Present_Mode) {
 	window_handle = window;
 	surface = create_surface(window_handle);
-	swapchain = create_swapchain(surface, width, height, frame_in_flight, present_mode);
+	swapchain = create_swapchain(surface, width, height, present_mode);
 }
 
-gpu_create_swapchain :: (window: Window_Type, width:s32, height: s32, frame_in_flight: s32 = 3, present_mode: Swap_Chain_Present_Mode = .MAILBOX) {
-	window_handle = window;
-	surface = create_surface(window_handle);
-	swapchain = create_swapchain(surface, width, height, frame_in_flight, present_mode);
-}
-
-gpu_resize_swapchain :: (width: s32, height: s32, present_mode: Swap_Chain_Present_Mode) {
+gpu_resize_swapchain :: (width: s32, height: s32) {
 	vkDeviceWaitIdle(device);
 	destroy_swapchain(*swapchain);
 	destroy_surface(*surface);
 	surface = create_surface(window_handle);
-	swapchain = create_swapchain(surface, width, height, swapchain.images_in_flight, present_mode);
-}
-
-gpu_resize_swapchain :: (width: s32, height: s32) {
-	gpu_resize_swapchain(width, height, swapchain.present_mode);
+	swapchain = create_swapchain(surface, width, height, swapchain.present_mode);
 }
 
 gpu_context: *Rendering_Context;

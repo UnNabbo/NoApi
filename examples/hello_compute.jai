@@ -15,7 +15,7 @@ main :: (){
 	quit := false;
 
 	gpu_init(1, {.GENERAL, 1});
-	gpu_create_swapchain(window, 1280, 720, 1, .FIFO);
+	gpu_create_swapchain(window, 1280, 720, .FIFO);
 	queue := gpu_create_queue(.GENERAL);
 	
 	compute_ir := gpu_create_shader_from_ir("res/compute.spv");

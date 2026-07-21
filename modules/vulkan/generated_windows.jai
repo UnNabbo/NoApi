@@ -7566,7 +7566,6 @@ VkPipelineLayoutCreateInfo :: struct {
     pPushConstantRanges:    *VkPushConstantRange;
 }
 
-
 VkSamplerCreateInfo :: struct {
     sType:                   VkStructureType = .SAMPLER_CREATE_INFO;
     pNext:                   *void;
